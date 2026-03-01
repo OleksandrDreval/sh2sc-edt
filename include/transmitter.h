@@ -46,6 +46,12 @@ uint8_t calculateChecksum(const uint8_t packet[PACKET_SIZE]);
 // and transmits it. Called by formAndSendPacket and on retransmissions.
 void sendPacket(uint8_t noteIndex, uint8_t noteDuration, uint8_t seqNum);
 
+// High-level send entry point used by the FSM SENDING state.
+// Takes raw (plain-text) note_idx and duration_idx, stores them as
+// the pending retransmit payload, then delegates to sendPacket().
+// The module-level seqNum is consumed automatically.
+void formAndSendPacket(uint8_t note_idx, uint8_t duration_idx);
+
 // Display helper 
 // Updates the I2C LCD with the current FSM state, sequence number and checksum.
 // Must never call lcd.clear() in a tight loop — only on state changes.
