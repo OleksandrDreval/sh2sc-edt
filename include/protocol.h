@@ -22,6 +22,12 @@ const uint8_t START_MARKER = 0xAA; // Frame delimiter; marks the beginning of a 
 const uint8_t ACK_BYTE     = 0x06; // Positive acknowledgement (packet received correctly)
 const uint8_t NACK_BYTE    = 0x15; // Negative acknowledgement (checksum mismatch, resend)
 
+// XOR stream cipher 
+// Dynamic key formula: K_dynamic = SECRET_KEY ^ seq_num
+// This prevents replay attacks because the same note produces different ciphertext
+// each time it is sent with a different sequence number.
+const uint8_t SECRET_KEY = 0x3F;
+
 // Stop-and-Wait ARQ timing 
 const uint32_t ACK_TIMEOUT_MS = 500UL; // Milliseconds to wait for ACK before retrying
 const uint8_t  MAX_RETRIES    = 3;     // Maximum consecutive retransmissions before giving up
