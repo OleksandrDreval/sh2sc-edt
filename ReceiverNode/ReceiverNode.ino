@@ -8,8 +8,8 @@
 //   - validateAndDecrypt(): verify checksum, send ACK/NACK, decrypt, play note.
 //   - Non-blocking buzzer timing via millis().
 
-#include "../include/receiver.h"
-#include <LiquidCrystal_I2C.h>
+#include "receiver.h"
+#include <LiquidCrystal_AIP31068_I2C.h>
 
 // UNIVERSAL NOTE FREQUENCY DICTIONARY
 //
@@ -47,8 +47,8 @@ static const uint16_t universal_notes[NOTE_DICT_SIZE] = {
 
 // HARDWARE OBJECTS
 
-// I2C LCD: 16 columns × 2 rows, Aip31068-compatible via LiquidCrystal_I2C.
-static LiquidCrystal_I2C lcd(RX_LCD_ADDR, RX_LCD_COLS, RX_LCD_ROWS);
+// I2C LCD: 16 columns × 2 rows, Aip31068-compatible controller.
+static LiquidCrystal_AIP31068_I2C lcd(RX_LCD_ADDR, RX_LCD_COLS, RX_LCD_ROWS);
 
 // RUNTIME STATE
 
