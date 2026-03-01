@@ -4,8 +4,10 @@
 // Responsibilities:
 //   - Read the start button (with millis-based debounce on D2).
 //   - Walk through the Super Mario melody array packet by packet.
-//   - FSM: IDLE → SENDING → WAITING_ACK (→ IDLE when melody ends).
-//   - Sending and ACK logic are intentionally left as TODO stubs.
+//   - formAndSendPacket(): full crypto pipeline (key gen → encrypt → checksum → send).
+//   - Stop-and-Wait ARQ: after every SEND wait up to ACK_TIMEOUT_MS (50 ms) for ACK.
+//     ACK  → advance melody (melodyIndex++, seqNum++).
+//     NACK or timeout → retransmit the SAME packet with the SAME seqNum.
  
 
 #include "../include/transmitter.h"
