@@ -1,13 +1,12 @@
 // RECEIVER (Node B) — "The Synthesizer"
 // Flash this sketch onto the RX Arduino Nano.
 
-// Current skeleton responsibilities:
+// Current responsibilities:
 //   - Initialise UART (9600) and I2C LCD (Aip31068).
 //   - Hold the universal note-frequency dictionary (indices 0–20).
 //   - Collect incoming bytes non-blocking into rx_buffer[5].
-//   - Guard: first byte must be START_MARKER (0xAA); anything else is discarded.
-//   - When all 5 bytes are in the buffer → display "Got Packet" on LCD.
-//   - Checksum validation and decryption are left as TODO stubs (Stage 3).
+//   - validateAndDecrypt(): verify checksum, send ACK/NACK, decrypt, play note.
+//   - Non-blocking buzzer timing via millis().
 
 #include "../include/receiver.h"
 #include <LiquidCrystal_I2C.h>
