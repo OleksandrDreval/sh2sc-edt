@@ -134,15 +134,20 @@ void updateRxDisplay(RxState state, uint8_t seqNumber, bool checksumOk) {
  
 
 void rx_setup() {
+  // UART: 9600 8N1 — must match the transmitter exactly.
   Serial.begin(BAUD_RATE);
 
+  // Buzzer pin configured as output; stays silent until a valid note arrives.
   pinMode(RX_BUZZER_PIN, OUTPUT);
 
+  // I2C LCD (Aip31068 compatible, address 0x27).
   lcd.init();
   lcd.backlight();
 
+  // Reset FSM and buffer.
   currentState  = RxState::WAITING_FOR_START;
   bytesReceived = 0;
+
   updateRxDisplay(currentState, 0, false);
 }
 
