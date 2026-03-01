@@ -192,9 +192,10 @@ DecryptedNote validateAndDecrypt(uint8_t* buffer) {
 // tone() configures the PWM hardware and returns immediately.
 // The note is silenced by stopNote() called from rx_loop() via millis().
 void startNote(uint16_t frequencyHz, uint16_t durationMs) {
-  // TODO (Stage 3): tone(RX_BUZZER_PIN, frequencyHz), record millis().
-  (void)frequencyHz;
-  (void)durationMs;
+  tone(RX_BUZZER_PIN, frequencyHz);
+  noteStartMs   = millis();
+  noteLengthMs  = durationMs;
+  isPlayingNote = true;
 }
 
 void stopNote() {
