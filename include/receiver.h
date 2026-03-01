@@ -11,7 +11,7 @@
 
 // Hardware pins 
 const uint8_t RX_BUZZER_PIN = 9;    // PWM-capable pin connected to the piezo speaker
-const uint8_t RX_LCD_ADDR   = 0x27; // I2C address of the Aip31068 LCD
+const uint8_t RX_LCD_ADDR   = 0x3E; // I2C address of the Aip31068 LCD
 
 // Note dictionary size
 // The receiver's "universal dictionary" maps a note index to a frequency in Hz.
