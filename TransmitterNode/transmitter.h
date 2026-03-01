@@ -53,6 +53,7 @@ void sendPacket(uint8_t noteIndex, uint8_t noteDuration, uint8_t seqNum);
 void formAndSendPacket(uint8_t note_idx, uint8_t duration_idx);
 
 // Display helper 
-// Updates the I2C LCD with the current FSM state, sequence number and checksum.
-// Must never call lcd.clear() in a tight loop — only on state changes.
-void updateTxDisplay(TxState state, uint8_t seqNum, uint8_t checksum);
+// Row 0: current packet number (seqNum) + consecutive retry counter.
+// Row 1: current FSM state label.
+// Never call in a tight loop — only on FSM state transitions.
+void updateTxDisplay(TxState state, uint8_t seqNum, uint8_t retries);
