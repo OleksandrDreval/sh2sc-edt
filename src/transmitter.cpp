@@ -59,11 +59,10 @@ static LiquidCrystal_I2C lcd(TX_LCD_ADDR, TX_LCD_COLS, TX_LCD_ROWS);
 static TxState  currentState  = TxState::IDLE;
 static uint8_t  melodyIndex   = 0;   // Current position within noteIndices[]
 static uint8_t  seqNum        = 0;   // Packet sequence number (0–255, wraps)
-static uint8_t  retryCount    = 0;   // Consecutive retransmission counter
 static uint8_t  lastChecksum  = 0;   // Checksum of the last sent packet (display only)
 static uint32_t ackWaitStart  = 0;   // Timestamp (ms) when WAITING_ACK began
 
-// Pending packet payload — stored so the packet can be retransmitted on NACK.
+// Pending packet snapshot — allows retransmission without re-reading melody arrays.
 static uint8_t pendingNoteIndex    = 0;
 static uint8_t pendingNoteDuration = 0;
 
@@ -225,15 +224,16 @@ void tx_loop() {
 
     case TxState::SENDING:
       if (melodyIndex >= MELODY_LENGTH) {
-        // All notes have been delivered successfully — melody is complete.
+        // All notes delivered — melody is complete.
         currentState = TxState::IDLE;
         updateTxDisplay(currentState, seqNum, lastChecksum);
         break;
       }
-      // Encrypt and transmit the current note.
+      // Build, encrypt, and transmit the current note.
+      // seqNum is NOT yet incremented — it advances only on ACK so that
+      // every retransmission of the same note reuses the same key.
       formAndSendPacket(noteIndices[melodyIndex], noteDurations[melodyIndex]);
-      retryCount   = 0;
-      ackWaitStart = millis(); // Start the ACK timeout window.
+      ackWaitStart = millis(); // Open the ACK receive window (50 ms).
       currentState = TxState::WAITING_ACK;
       updateTxDisplay(currentState, seqNum, lastChecksum);
       break;
@@ -243,44 +243,27 @@ void tx_loop() {
         const uint8_t response = static_cast<uint8_t>(Serial.read());
 
         if (response == ACK_BYTE) {
-          // Receiver confirmed the packet is intact — advance to the next note.
+          // ACK: RX confirmed the packet is intact → advance to the next note.
           melodyIndex++;
-          seqNum++;           // Increment AFTER ACK so re-sends use the same key.
-          retryCount   = 0;
+          seqNum++;        // Increment AFTER ACK so every retransmit uses the same key.
           currentState = TxState::SENDING;
           updateTxDisplay(currentState, seqNum, lastChecksum);
 
         } else if (response == NACK_BYTE) {
-          // Receiver detected corruption — retransmit the same packet.
-          if (retryCount < MAX_RETRIES) {
-            retryCount++;
-            formAndSendPacket(pendingNoteIndex, pendingNoteDuration);
-            ackWaitStart = millis();
-            updateTxDisplay(currentState, seqNum, lastChecksum);
-          } else {
-            // Exhausted retries; skip this note to keep the melody moving.
-            retryCount = 0;
-            melodyIndex++;
-            seqNum++;
-            currentState = TxState::SENDING;
-            updateTxDisplay(currentState, seqNum, lastChecksum);
-          }
-        }
-
-      } else if ((millis() - ackWaitStart) >= ACK_TIMEOUT_MS) {
-        // No response within the timeout window — treat as a lost ACK/NACK.
-        if (retryCount < MAX_RETRIES) {
-          retryCount++;
+          // NACK: RX detected a checksum error → retransmit the SAME packet
+          // with the SAME seqNum so RX can reconstruct the identical K_dynamic.
           formAndSendPacket(pendingNoteIndex, pendingNoteDuration);
           ackWaitStart = millis();
           updateTxDisplay(currentState, seqNum, lastChecksum);
-        } else {
-          retryCount = 0;
-          melodyIndex++;
-          seqNum++;
-          currentState = TxState::SENDING;
-          updateTxDisplay(currentState, seqNum, lastChecksum);
         }
+        // Any other byte (noise on the feedback line) is silently ignored.
+
+      } else if ((millis() - ackWaitStart) >= ACK_TIMEOUT_MS) {
+        // Timeout: no response within 50 ms → channel or ACK was lost.
+        // Retransmit the SAME packet with the SAME seqNum.
+        formAndSendPacket(pendingNoteIndex, pendingNoteDuration);
+        ackWaitStart = millis();
+        updateTxDisplay(currentState, seqNum, lastChecksum);
       }
       break;
   }
