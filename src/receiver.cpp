@@ -1,4 +1,3 @@
- 
 // RECEIVER (Node B) — "The Synthesizer"
 // Flash this sketch onto the RX Arduino Nano.
 
@@ -60,6 +59,11 @@ static RxState currentState  = RxState::WAITING_FOR_START;
 static uint8_t rx_buffer[PACKET_SIZE];
 static uint8_t bytesReceived = 0; // How many bytes have been written into rx_buffer
 
+// Non-blocking note playback timer.
+static uint32_t noteStartMs  = 0;    // millis() timestamp when the note began
+static uint16_t noteLengthMs = 0;    // How long the note should sound
+static bool     isPlayingNote = false;
+
 // DISPLAY HELPER
 // Updates the LCD only when called explicitly — never in a busy-loop.
 void updateRxDisplay(RxState state, uint8_t seqNum, bool checksumOk) {
@@ -117,21 +121,76 @@ void processReceivedByte(uint8_t inByte) {
   }
 }
 
-// STUB HELPERS  (to be implemented in Stage 3)
+// CRYPTO & INTEGRITY FUNCTIONS
 
+// validateChecksum — verifies the XOR frame integrity.
+// Recomputes CHK_expected = B0^B1^B2^B3 and compares with packet[4].
+// Returns true when the received frame is intact.
 bool validateChecksum(const uint8_t packet[PACKET_SIZE]) {
-  // TODO (Stage 3): compute CHK_expected = B0^B1^B2^B3, compare with packet[4].
-  (void)packet;
-  return false;
+  const uint8_t expected = packet[PACKET_IDX_START]
+                         ^ packet[PACKET_IDX_NOTE]
+                         ^ packet[PACKET_IDX_DURATION]
+                         ^ packet[PACKET_IDX_SEQ];
+  return (expected == packet[PACKET_IDX_CHECKSUM]);
 }
 
-void decryptAndPlay(const uint8_t packet[PACKET_SIZE]) {
-  // TODO (Stage 3): K_dynamic = SECRET_KEY ^ packet[PACKET_IDX_SEQ],
-  //                 decrypt noteIndex and durationTens, look up universal_notes[],
-  //                 call startNote().
-  (void)packet;
+// validateAndDecrypt — the main RX crypto pipeline entry point.
+//
+// Workflow (mirrors the TX pipeline from 05_encryption_approach.instructions.md):
+//   1. Compute CHK_expected = B0^B1^B2^B3; compare with buffer[4].
+//   2. FAIL: send NACK_BYTE, return {0, 0, false}.
+//   3. PASS: send ACK_BYTE.
+//   4. Reconstruct K_dynamic = SECRET_KEY ^ buffer[PACKET_IDX_SEQ].
+//   5. Decrypt: noteIndex    = buffer[PACKET_IDX_NOTE]     ^ K_dynamic  (M = C ^ K)
+//               durationTens = buffer[PACKET_IDX_DURATION] ^ K_dynamic
+//   6. Bounds-check noteIndex against NOTE_DICT_SIZE.
+//   7. Look up frequency in universal_notes[], call startNote().
+//   8. Return filled DecryptedNote struct.
+DecryptedNote validateAndDecrypt(uint8_t* buffer) {
+  DecryptedNote result = {0, 0, false};
+
+  // Step 1-2: integrity check
+  if (!validateChecksum(buffer)) {
+    // Packet was corrupted by channel noise — request a retransmission.
+    Serial.write(NACK_BYTE);
+    return result; // isValid stays false
+  }
+
+  // Step 3: acknowledge clean packet
+  Serial.write(ACK_BYTE);
+
+  // Step 4: reconstruct the same dynamic key TX used for this packet
+  // K_dynamic = SECRET_KEY ^ seq_num  (changes every packet → no replay attacks)
+  const uint8_t seqNumber = buffer[PACKET_IDX_SEQ];
+  const uint8_t key       = SECRET_KEY ^ seqNumber;
+
+  // Step 5: XOR decryption (M = C ^ K_dynamic)
+  const uint8_t noteIndex    = buffer[PACKET_IDX_NOTE]     ^ key;
+  const uint8_t durationTens = buffer[PACKET_IDX_DURATION] ^ key;
+
+  // Step 6: bounds check — guard against out-of-range index
+  if (noteIndex >= NOTE_DICT_SIZE) {
+    // Packet passed checksum but contains an invalid note index.
+    // This should not happen in normal operation; skip playback silently.
+    result.isValid = false;
+    return result;
+  }
+
+  // Step 7: look up frequency and trigger non-blocking playback ---
+  const uint16_t frequencyHz = universal_notes[noteIndex];
+  const uint16_t durationMs  = static_cast<uint16_t>(durationTens) * 10u;
+  startNote(frequencyHz, durationMs);
+
+  // Step 8: return decoded data for display / diagnostics ---
+  result.noteIndex    = noteIndex;
+  result.durationMs10 = durationTens;
+  result.isValid      = true;
+  return result;
 }
 
+// startNote — begins buzzer output; non-blocking.
+// tone() configures the PWM hardware and returns immediately.
+// The note is silenced by stopNote() called from rx_loop() via millis().
 void startNote(uint16_t frequencyHz, uint16_t durationMs) {
   // TODO (Stage 3): tone(RX_BUZZER_PIN, frequencyHz), record millis().
   (void)frequencyHz;
