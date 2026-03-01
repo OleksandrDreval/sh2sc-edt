@@ -110,23 +110,29 @@ void processReceivedByte(uint8_t inByte) {
   }
 }
 
-void updateRxDisplay(RxState state, uint8_t seqNumber, bool checksumOk) {
-  lcd.clear();
+// STUB HELPERS  (to be implemented in Stage 3)
 
-  // Row 0: FSM state label
-  lcd.setCursor(0, 0);
-  switch (state) {
-    case RxState::WAITING_FOR_START:   lcd.print("WAIT START");  break;
-    case RxState::READING_PAYLOAD:     lcd.print("READING...");  break;
-    case RxState::VALIDATING_CHECKSUM: lcd.print("VALIDATING");  break;
-    case RxState::EXECUTING_ACTION:    lcd.print("PLAYING");     break;
-  }
+bool validateChecksum(const uint8_t packet[PACKET_SIZE]) {
+  // TODO (Stage 3): compute CHK_expected = B0^B1^B2^B3, compare with packet[4].
+  (void)packet;
+  return false;
+}
 
-  // Row 1: last sequence number and checksum result
-  lcd.setCursor(0, 1);
-  lcd.print("SEQ:");
-  lcd.print(seqNumber);
-  lcd.print(checksumOk ? " OK" : " ERR");
+void decryptAndPlay(const uint8_t packet[PACKET_SIZE]) {
+  // TODO (Stage 3): K_dynamic = SECRET_KEY ^ packet[PACKET_IDX_SEQ],
+  //                 decrypt noteIndex and durationTens, look up universal_notes[],
+  //                 call startNote().
+  (void)packet;
+}
+
+void startNote(uint16_t frequencyHz, uint16_t durationMs) {
+  // TODO (Stage 3): tone(RX_BUZZER_PIN, frequencyHz), record millis().
+  (void)frequencyHz;
+  (void)durationMs;
+}
+
+void stopNote() {
+  // TODO (Stage 3): noTone(RX_BUZZER_PIN).
 }
 
  
