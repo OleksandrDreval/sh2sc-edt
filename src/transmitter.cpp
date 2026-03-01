@@ -239,11 +239,49 @@ void tx_loop() {
       break;
 
     case TxState::WAITING_ACK:
-      // TODO (Stage 4): Listen on Serial for ACK_BYTE / NACK_BYTE.
-      //   ACK  → melodyIndex++; seqNum++; → SENDING
-      //   NACK → retransmit the pending packet; reset ackWaitStart; stay here.
-      //   Timeout (millis() - ackWaitStart >= ACK_TIMEOUT_MS)
-      //        → treat as NACK (retransmit or skip after MAX_RETRIES).
+      if (Serial.available() > 0) {
+        const uint8_t response = static_cast<uint8_t>(Serial.read());
+
+        if (response == ACK_BYTE) {
+          // Receiver confirmed the packet is intact — advance to the next note.
+          melodyIndex++;
+          seqNum++;           // Increment AFTER ACK so re-sends use the same key.
+          retryCount   = 0;
+          currentState = TxState::SENDING;
+          updateTxDisplay(currentState, seqNum, lastChecksum);
+
+        } else if (response == NACK_BYTE) {
+          // Receiver detected corruption — retransmit the same packet.
+          if (retryCount < MAX_RETRIES) {
+            retryCount++;
+            formAndSendPacket(pendingNoteIndex, pendingNoteDuration);
+            ackWaitStart = millis();
+            updateTxDisplay(currentState, seqNum, lastChecksum);
+          } else {
+            // Exhausted retries; skip this note to keep the melody moving.
+            retryCount = 0;
+            melodyIndex++;
+            seqNum++;
+            currentState = TxState::SENDING;
+            updateTxDisplay(currentState, seqNum, lastChecksum);
+          }
+        }
+
+      } else if ((millis() - ackWaitStart) >= ACK_TIMEOUT_MS) {
+        // No response within the timeout window — treat as a lost ACK/NACK.
+        if (retryCount < MAX_RETRIES) {
+          retryCount++;
+          formAndSendPacket(pendingNoteIndex, pendingNoteDuration);
+          ackWaitStart = millis();
+          updateTxDisplay(currentState, seqNum, lastChecksum);
+        } else {
+          retryCount = 0;
+          melodyIndex++;
+          seqNum++;
+          currentState = TxState::SENDING;
+          updateTxDisplay(currentState, seqNum, lastChecksum);
+        }
+      }
       break;
   }
 }
