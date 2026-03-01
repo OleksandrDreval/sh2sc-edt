@@ -601,4 +601,4 @@ $RECYCLE.BIN/
 .github/instructions/*.md
 
 # Simulation scheme files
-shsc-arq.sim1
+*.sim1
