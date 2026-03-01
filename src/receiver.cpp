@@ -245,19 +245,26 @@ void rx_loop() {
     processReceivedByte(inByte);
   }
 
-  // Resolve GOT_PACKET
-  // All 5 bytes are buffered; run the full validation + decryption pipeline.
+  // Resolve GOT_PACKET — validate integrity, send ACK/NACK, decrypt, play.
+  //
+  // FSM path on SUCCESS:  GOT_PACKET → VALIDATING_CHECKSUM → EXECUTING_ACTION → WAITING_FOR_START
+  // FSM path on FAILURE:  GOT_PACKET → VALIDATING_CHECKSUM → WAITING_FOR_START
   if (currentState == RxState::GOT_PACKET) {
+    currentState = RxState::VALIDATING_CHECKSUM;
+
     const DecryptedNote note = validateAndDecrypt(rx_buffer);
+    // ACK_BYTE (0x06) or NACK_BYTE (0x15) is already sent inside validateAndDecrypt.
 
-    // Update the display with the outcome regardless of validity.
-    updateRxDisplay(
-      note.isValid ? RxState::EXECUTING_ACTION : RxState::WAITING_FOR_START,
-      rx_buffer[PACKET_IDX_SEQ],
-      note.isValid
-    );
+    if (note.isValid) {
+      // Checksum passed → tone() has been triggered inside startNote().
+      currentState = RxState::EXECUTING_ACTION;
+      updateRxDisplay(currentState, rx_buffer[PACKET_IDX_SEQ], true);
+    } else {
+      // Checksum failed → NACK sent, TX will retransmit.
+      updateRxDisplay(RxState::WAITING_FOR_START, rx_buffer[PACKET_IDX_SEQ], false);
+    }
 
-    // Reset the buffer so the FSM is ready for the next incoming packet.
+    // Always reset the buffer so the FSM is ready for the next incoming packet.
     bytesReceived = 0;
     currentState  = RxState::WAITING_FOR_START;
   }
