@@ -600,3 +600,5 @@ $RECYCLE.BIN/
 *-SEC.md
 .github/instructions/*.md
 
+# Simulation scheme files
+shsc-arq.sim1
