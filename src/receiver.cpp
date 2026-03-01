@@ -198,8 +198,15 @@ void startNote(uint16_t frequencyHz, uint16_t durationMs) {
   isPlayingNote = true;
 }
 
+// stopNote — silences the buzzer.
 void stopNote() {
-  // TODO (Stage 3): noTone(RX_BUZZER_PIN).
+  noTone(RX_BUZZER_PIN);
+  isPlayingNote = false;
+}
+
+// decryptAndPlay — kept for API compatibility; delegates to validateAndDecrypt.
+void decryptAndPlay(const uint8_t packet[PACKET_SIZE]) {
+  validateAndDecrypt(const_cast<uint8_t*>(packet));
 }
 
  
