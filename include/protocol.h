@@ -25,3 +25,6 @@ const uint8_t NACK_BYTE    = 0x15; // Negative acknowledgement (checksum mismatc
 // Stop-and-Wait ARQ timing 
 const uint32_t ACK_TIMEOUT_MS = 500UL; // Milliseconds to wait for ACK before retrying
 const uint8_t  MAX_RETRIES    = 3;     // Maximum consecutive retransmissions before giving up
+
+// UART configuration 
+const uint16_t BAUD_RATE = 9600;
