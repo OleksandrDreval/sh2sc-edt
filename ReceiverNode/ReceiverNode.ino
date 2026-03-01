@@ -63,6 +63,13 @@ static uint32_t noteStartMs  = 0;    // millis() timestamp when the note began
 static uint16_t noteLengthMs = 0;    // How long the note should sound
 static bool     isPlayingNote = false;
 
+// Non-blocking "CHK ERR! NACK" error-flash timer.
+// When a corrupted packet arrives, the error message is shown for
+// CHK_ERR_DISPLAY_MS milliseconds, then the display reverts to normal.
+const uint16_t  CHK_ERR_DISPLAY_MS = 50;
+static bool     isShowingError    = false;
+static uint32_t errorDisplayStart = 0;
+
 // DISPLAY HELPER
 // Updates the LCD only when called explicitly — never in a busy-loop.
 void updateRxDisplay(RxState state, uint8_t seqNum, bool checksumOk) {
@@ -221,7 +228,7 @@ void rx_setup() {
 
   // I2C LCD (Aip31068 compatible, address 0x27).
   lcd.init();
-  lcd.backlight();
+  // lcd.backlight();
 
   // Reset FSM and buffer.
   currentState  = RxState::WAITING_FOR_START;
@@ -231,6 +238,13 @@ void rx_setup() {
 }
 
 void rx_loop() {
+  // Error-flash expiry: once CHK_ERR_DISPLAY_MS have elapsed, restore the
+  // normal WAITING_FOR_START display — fully non-blocking.
+  if (isShowingError && ((millis() - errorDisplayStart) >= CHK_ERR_DISPLAY_MS)) {
+    isShowingError = false;
+    updateRxDisplay(RxState::WAITING_FOR_START, 0, false);
+  }
+
   // Non-blocking note duration management
   // Once the note has been sounding for its full duration, silence the buzzer.
   // No delay() used: the comparison is O(1) and returns instantly.
@@ -261,7 +275,15 @@ void rx_loop() {
       updateRxDisplay(currentState, rx_buffer[PACKET_IDX_SEQ], true);
     } else {
       // Checksum failed → NACK sent, TX will retransmit.
-      updateRxDisplay(RxState::WAITING_FOR_START, rx_buffer[PACKET_IDX_SEQ], false);
+      // Flash "CHK ERR! NACK" for CHK_ERR_DISPLAY_MS ms and then revert — non-blocking.
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("CHK ERR! NACK");
+      lcd.setCursor(0, 1);
+      lcd.print("SEQ:");
+      lcd.print(rx_buffer[PACKET_IDX_SEQ]);
+      errorDisplayStart = millis();
+      isShowingError    = true;
     }
 
     // Always reset the buffer so the FSM is ready for the next incoming packet.
