@@ -10,8 +10,8 @@
 //     NACK or timeout → retransmit the SAME packet with the SAME seqNum.
  
 
-#include "../include/transmitter.h"
-#include <LiquidCrystal_I2C.h>
+#include "transmitter.h"
+#include <LiquidCrystal_AIP31068_I2C.h>
 
  
 // CONSTANTS
@@ -51,8 +51,8 @@ static const uint8_t noteDurations[MELODY_LENGTH] = {
 // HARDWARE OBJECTS
  
 
-// I2C LCD: 16 columns × 2 rows, Aip31068-compatible via LiquidCrystal_I2C.
-static LiquidCrystal_I2C lcd(TX_LCD_ADDR, TX_LCD_COLS, TX_LCD_ROWS);
+// I2C LCD: 16 columns × 2 rows, Aip31068-compatible controller.
+static LiquidCrystal_AIP31068_I2C lcd(TX_LCD_ADDR, TX_LCD_COLS, TX_LCD_ROWS);
 
  
 // RUNTIME STATE
