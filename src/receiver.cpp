@@ -232,22 +232,31 @@ void rx_setup() {
 }
 
 void rx_loop() {
+  // Non-blocking note duration management
+  // Once the note has been sounding for its full duration, silence the buzzer.
+  // No delay() used: the comparison is O(1) and returns instantly.
+  if (isPlayingNote && ((millis() - noteStartMs) >= noteLengthMs)) {
+    stopNote();
+  }
+
   // Non-blocking UART reading
   // Read as many bytes as are waiting in the hardware UART buffer right now.
-  // Nothing blocks here; if there are no bytes, the while-body never executes.
   while (Serial.available() > 0) {
     const uint8_t inByte = static_cast<uint8_t>(Serial.read());
     processReceivedByte(inByte);
   }
 
   // Resolve GOT_PACKET
-  // The FSM lands here once all 5 bytes are buffered. Show a confirmation
-  // message on the LCD, then reset and wait for the next packet.
-  // Full validation and decryption will replace this block in Stage 3.
+  // All 5 bytes are buffered; run the full validation + decryption pipeline.
   if (currentState == RxState::GOT_PACKET) {
-    updateRxDisplay(currentState, rx_buffer[PACKET_IDX_SEQ], false);
+    const DecryptedNote note = validateAndDecrypt(rx_buffer);
 
-    // TODO (Stage 3): validateChecksum(); send ACK or NACK; decryptAndPlay().
+    // Update the display with the outcome regardless of validity.
+    updateRxDisplay(
+      note.isValid ? RxState::EXECUTING_ACTION : RxState::WAITING_FOR_START,
+      rx_buffer[PACKET_IDX_SEQ],
+      note.isValid
+    );
 
     // Reset the buffer so the FSM is ready for the next incoming packet.
     bytesReceived = 0;
