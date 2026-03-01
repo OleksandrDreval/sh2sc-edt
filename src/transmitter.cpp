@@ -1,4 +1,3 @@
- 
 // TRANSMITTER (Node A) — "The Conductor"
 // Flash this sketch onto the TX Arduino Nano.
 //
@@ -60,6 +59,7 @@ static LiquidCrystal_I2C lcd(TX_LCD_ADDR, TX_LCD_COLS, TX_LCD_ROWS);
 static TxState  currentState  = TxState::IDLE;
 static uint8_t  melodyIndex   = 0;   // Current position within noteIndices[]
 static uint8_t  seqNum        = 0;   // Packet sequence number (0–255, wraps)
+static uint8_t  retryCount    = 0;   // Consecutive retransmission counter
 static uint8_t  lastChecksum  = 0;   // Checksum of the last sent packet (display only)
 static uint32_t ackWaitStart  = 0;   // Timestamp (ms) when WAITING_ACK began
 
@@ -204,13 +204,17 @@ void tx_loop() {
       break;
 
     case TxState::SENDING:
-      // TODO (Stage 4): Read noteIndices[melodyIndex] and noteDurations[melodyIndex],
-      //                 populate pendingNoteIndex / pendingNoteDuration,
-      //                 call sendPacket(), set ackWaitStart = millis(),
-      //                 then transition to WAITING_ACK.
-      //
-      // Stub — return to IDLE so the FSM does not get stuck during skeleton testing.
-      currentState = TxState::IDLE;
+      if (melodyIndex >= MELODY_LENGTH) {
+        // All notes have been delivered successfully — melody is complete.
+        currentState = TxState::IDLE;
+        updateTxDisplay(currentState, seqNum, lastChecksum);
+        break;
+      }
+      // Encrypt and transmit the current note.
+      formAndSendPacket(noteIndices[melodyIndex], noteDurations[melodyIndex]);
+      retryCount   = 0;
+      ackWaitStart = millis(); // Start the ACK timeout window.
+      currentState = TxState::WAITING_ACK;
       updateTxDisplay(currentState, seqNum, lastChecksum);
       break;
 
