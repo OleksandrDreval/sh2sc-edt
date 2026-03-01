@@ -158,41 +158,24 @@ void rx_setup() {
 }
 
 void rx_loop() {
-  // Non-blocking note duration management 
-  // Once a note has been playing for its designated duration, silence the buzzer.
-  if (isPlayingNote && ((millis() - noteStartMs) >= noteLengthMs)) {
-    stopNote();
-  }
-
-  // Byte-by-byte FSM processing 
+  // Non-blocking UART reading
+  // Read as many bytes as are waiting in the hardware UART buffer right now.
+  // Nothing blocks here; if there are no bytes, the while-body never executes.
   while (Serial.available() > 0) {
     const uint8_t inByte = static_cast<uint8_t>(Serial.read());
     processReceivedByte(inByte);
   }
 
-  // Resolve completed packet states 
-  // These transitions are handled here (not inside processReceivedByte) so
-  // we can send a serial response without re-entering the byte-processing path.
-  if (currentState == RxState::VALIDATING_CHECKSUM) {
-    lastSeqNum     = rxBuffer[PACKET_IDX_SEQ];
-    lastChecksumOk = validateChecksum(rxBuffer);
+  // Resolve GOT_PACKET
+  // The FSM lands here once all 5 bytes are buffered. Show a confirmation
+  // message on the LCD, then reset and wait for the next packet.
+  // Full validation and decryption will replace this block in Stage 3.
+  if (currentState == RxState::GOT_PACKET) {
+    updateRxDisplay(currentState, rx_buffer[PACKET_IDX_SEQ], false);
 
-    if (lastChecksumOk) {
-      // Packet is intact — acknowledge and play the note
-      Serial.write(ACK_BYTE);
-      currentState = RxState::EXECUTING_ACTION;
-      updateRxDisplay(currentState, lastSeqNum, true);
-    } else {
-      // Packet is corrupted by noise — request retransmission
-      Serial.write(NACK_BYTE);
-      bytesReceived = 0;
-      currentState  = RxState::WAITING_FOR_START;
-      updateRxDisplay(currentState, lastSeqNum, false);
-    }
-  }
+    // TODO (Stage 3): validateChecksum(); send ACK or NACK; decryptAndPlay().
 
-  if (currentState == RxState::EXECUTING_ACTION) {
-    decryptAndPlay(rxBuffer);
+    // Reset the buffer so the FSM is ready for the next incoming packet.
     bytesReceived = 0;
     currentState  = RxState::WAITING_FOR_START;
   }
