@@ -21,3 +21,7 @@ const uint8_t PACKET_IDX_CHECKSUM = 4;
 const uint8_t START_MARKER = 0xAA; // Frame delimiter; marks the beginning of a packet
 const uint8_t ACK_BYTE     = 0x06; // Positive acknowledgement (packet received correctly)
 const uint8_t NACK_BYTE    = 0x15; // Negative acknowledgement (checksum mismatch, resend)
+
+// Stop-and-Wait ARQ timing 
+const uint32_t ACK_TIMEOUT_MS = 500UL; // Milliseconds to wait for ACK before retrying
+const uint8_t  MAX_RETRIES    = 3;     // Maximum consecutive retransmissions before giving up
