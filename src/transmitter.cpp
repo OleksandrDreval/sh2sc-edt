@@ -143,6 +143,26 @@ void sendPacket(uint8_t noteIndex, uint8_t noteDuration, uint8_t seqNumber) {
   Serial.write(packet, PACKET_SIZE);
 }
 
+// formAndSendPacket — high-level crypto pipeline entry point
+//
+// Workflow (matches the spec from 05_encryption_approach.instructions.md):
+//   1. Store plain-text payload as the pending retransmit snapshot.
+//   2. Generate K_dynamic = SECRET_KEY ^ seqNum  ← replay-attack mitigation.
+//   3. Encrypt: C_note = note_idx ^ K_dynamic
+//               C_dur  = duration_idx ^ K_dynamic
+//   4. Assemble 5-byte packet: [0xAA | C_note | C_dur | seqNum | CHK].
+//   5. Compute CHK = B0 ^ B1 ^ B2 ^ B3  (over ciphertext, not plaintext).
+//   6. Transmit via Serial.write().
+void formAndSendPacket(uint8_t note_idx, uint8_t duration_idx) {
+  // Snapshot the plain-text payload so the FSM can retransmit on NACK
+  // without re-reading the melody arrays.
+  pendingNoteIndex    = note_idx;
+  pendingNoteDuration = duration_idx;
+
+  // Delegate to sendPacket which owns the full assemble+encrypt+send pipeline.
+  sendPacket(note_idx, duration_idx, seqNum);
+}
+
  
 // DISPLAY HELPER
 // Updates the LCD only when explicitly called — never in a busy-loop.
