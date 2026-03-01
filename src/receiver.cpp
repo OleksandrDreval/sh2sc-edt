@@ -84,25 +84,27 @@ void processReceivedByte(uint8_t inByte) {
   switch (currentState) {
 
     case RxState::WAITING_FOR_START:
-      // Discard everything until a valid frame delimiter is found
+      // Any byte that is not the frame delimiter is noise — silently discard.
+      // This keeps the buffer clean even in the presence of channel corruption.
       if (inByte == START_MARKER) {
-        rxBuffer[PACKET_IDX_START] = inByte;
+        rx_buffer[PACKET_IDX_START] = inByte;
         bytesReceived = 1;
         currentState  = RxState::READING_PAYLOAD;
       }
       break;
 
     case RxState::READING_PAYLOAD:
-      rxBuffer[bytesReceived++] = inByte;
+      // Collect bytes 1–4 into the static buffer one at a time.
+      rx_buffer[bytesReceived] = inByte;
+      bytesReceived++;
+
       if (bytesReceived == PACKET_SIZE) {
-        // All 5 bytes collected — move to validation
-        currentState = RxState::VALIDATING_CHECKSUM;
+        // All 5 bytes are in the buffer — hand control to rx_loop().
+        currentState = RxState::GOT_PACKET;
       }
       break;
 
-    // Note: VALIDATING_CHECKSUM and EXECUTING_ACTION are handled
-    // synchronously in rx_loop() rather than here, because they
-    // also involve sending a response byte back to the transmitter.
+    // Remaining states are resolved in rx_loop(), not here.
     default:
       break;
   }
