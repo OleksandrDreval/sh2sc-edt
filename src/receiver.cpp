@@ -6,92 +6,80 @@
 #include "../include/receiver.h"
 #include <LiquidCrystal_I2C.h>
 
-// I2C LCD instance (16 columns, 2 rows) 
-static LiquidCrystal_I2C lcd(RX_LCD_ADDR, 16, 2);
-
-// Universal note frequency dictionary (Hz) 
-// Node B holds only frequencies — it never knows which song is being played.
-// The TX encodes a note as an index into this table; RX looks up the frequency.
-static const uint16_t NOTE_FREQUENCIES[NOTE_DICT_SIZE] = {
-  262,  // C4  (index  0)
-  277,  // C#4 (index  1)
-  294,  // D4  (index  2)
-  311,  // D#4 (index  3)
-  330,  // E4  (index  4)
-  349,  // F4  (index  5)
-  370,  // F#4 (index  6)
-  392,  // G4  (index  7)
-  415,  // G#4 (index  8)
-  440,  // A4  (index  9)
-  466,  // A#4 (index 10)
-  494,  // B4  (index 11)
-  523,  // C5  (index 12)
-  554,  // C#5 (index 13)
-  587,  // D5  (index 14)
-  622   // D#5 (index 15)
+// UNIVERSAL NOTE FREQUENCY DICTIONARY
+//
+// "universal_notes" maps an encoded note index (sent by TX) to the actual
+// frequency in Hz that the buzzer must produce. The receiver never knows which
+// melody is playing — it only knows how to translate index → frequency.
+//
+// Index layout (chromatic scale, C4 … G#5):
+//   0=C4  1=C#4  2=D4  3=D#4  4=E4   5=F4   6=F#4  7=G4
+//   8=G#4 9=A4  10=A#4 11=B4  12=C5  13=C#5 14=D5  15=D#5
+//  16=E5  17=F5  18=F#5 19=G5  20=G#5
+static const uint16_t universal_notes[NOTE_DICT_SIZE] = {
+  262,  //  0 — C4
+  277,  //  1 — C#4
+  294,  //  2 — D4
+  311,  //  3 — D#4
+  330,  //  4 — E4
+  349,  //  5 — F4
+  370,  //  6 — F#4
+  392,  //  7 — G4
+  415,  //  8 — G#4
+  440,  //  9 — A4
+  466,  // 10 — A#4
+  494,  // 11 — B4
+  523,  // 12 — C5
+  554,  // 13 — C#5
+  587,  // 14 — D5
+  622,  // 15 — D#5
+  659,  // 16 — E5
+  698,  // 17 — F5
+  740,  // 18 — F#5
+  784,  // 19 — G5
+  831   // 20 — G#5
 };
 
-// Runtime state 
-static RxState  currentState  = RxState::WAITING_FOR_START;
-static uint8_t  rxBuffer[PACKET_SIZE];  // Static receive buffer; no heap allocation
-static uint8_t  bytesReceived = 0;      // How many bytes are in the buffer so far
-static uint8_t  lastSeqNum    = 0;      // Last processed sequence number (for display)
-static bool     lastChecksumOk = false;
+// HARDWARE OBJECTS
 
-// Note playback timer (non-blocking) 
-static uint32_t noteStartMs  = 0;
-static uint16_t noteLengthMs = 0;
-static bool     isPlayingNote = false;
+// I2C LCD: 16 columns × 2 rows, Aip31068-compatible via LiquidCrystal_I2C.
+static LiquidCrystal_I2C lcd(RX_LCD_ADDR, RX_LCD_COLS, RX_LCD_ROWS);
 
- 
-// PUBLIC API IMPLEMENTATION
- 
+// RUNTIME STATE
 
-bool validateChecksum(const uint8_t packet[PACKET_SIZE]) {
-  // Recompute the checksum from the received bytes and compare with packet[4].
-  // CHK_expected = B0 ^ B1 ^ B2 ^ B3
-  const uint8_t expected = packet[PACKET_IDX_START]
-                         ^ packet[PACKET_IDX_NOTE]
-                         ^ packet[PACKET_IDX_DURATION]
-                         ^ packet[PACKET_IDX_SEQ];
-  return (expected == packet[PACKET_IDX_CHECKSUM]);
-}
+static RxState currentState  = RxState::WAITING_FOR_START;
 
-void decryptAndPlay(const uint8_t packet[PACKET_SIZE]) {
-  // Reconstruct the same dynamic key the transmitter used for this packet.
-  // Decryption is identical to encryption because XOR is its own inverse:
-  //   M = C ^ K_dynamic
-  const uint8_t seqNumber       = packet[PACKET_IDX_SEQ];
-  const uint8_t key             = SECRET_KEY ^ seqNumber;
+// Static receive buffer — exactly PACKET_SIZE bytes, no heap allocation.
+static uint8_t rx_buffer[PACKET_SIZE];
+static uint8_t bytesReceived = 0; // How many bytes have been written into rx_buffer
 
-  const uint8_t noteIndex    = packet[PACKET_IDX_NOTE]     ^ key;
-  const uint8_t durationTens = packet[PACKET_IDX_DURATION] ^ key;
+// DISPLAY HELPER
+// Updates the LCD only when called explicitly — never in a busy-loop.
+void updateRxDisplay(RxState state, uint8_t seqNum, bool checksumOk) {
+  lcd.clear();
 
-  // Guard against out-of-bounds dictionary access
-  if (noteIndex >= NOTE_DICT_SIZE) {
-    return;
+  // Row 0: FSM state label
+  lcd.setCursor(0, 0);
+  switch (state) {
+    case RxState::WAITING_FOR_START:   lcd.print("WAIT START");  break;
+    case RxState::READING_PAYLOAD:     lcd.print("READING...");  break;
+    case RxState::GOT_PACKET:          lcd.print("Got Packet");  break;
+    case RxState::VALIDATING_CHECKSUM: lcd.print("VALIDATING");  break;
+    case RxState::EXECUTING_ACTION:    lcd.print("PLAYING");     break;
   }
 
-  const uint16_t frequencyHz = NOTE_FREQUENCIES[noteIndex];
-  const uint16_t durationMs  = static_cast<uint16_t>(durationTens) * 10u;
-
-  startNote(frequencyHz, durationMs);
+  // Row 1: sequence number — shown only after at least one packet has arrived
+  lcd.setCursor(0, 1);
+  if (state != RxState::WAITING_FOR_START && state != RxState::READING_PAYLOAD) {
+    lcd.print("SEQ:");
+    lcd.print(seqNum);
+    lcd.print(checksumOk ? " OK" : " ---");
+  }
 }
 
-void startNote(uint16_t frequencyHz, uint16_t durationMs) {
-  // tone() is non-blocking; the actual silence is handled in rx_loop()
-  // via millis() comparison — no delay() is used here.
-  tone(RX_BUZZER_PIN, frequencyHz);
-  noteStartMs   = millis();
-  noteLengthMs  = durationMs;
-  isPlayingNote = true;
-}
-
-void stopNote() {
-  noTone(RX_BUZZER_PIN);
-  isPlayingNote = false;
-}
-
+// BYTE PROCESSOR — drives the FSM one byte at a time
+// Called from rx_loop() for every byte that arrives on the serial port.
+// Non-blocking by design: only processes bytes already in the HW UART buffer.
 void processReceivedByte(uint8_t inByte) {
   switch (currentState) {
 
@@ -194,7 +182,6 @@ void rx_loop() {
     decryptAndPlay(rxBuffer);
     bytesReceived = 0;
     currentState  = RxState::WAITING_FOR_START;
-    updateRxDisplay(currentState, lastSeqNum, true);
   }
 }
 
