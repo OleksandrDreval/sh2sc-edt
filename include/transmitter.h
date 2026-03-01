@@ -42,8 +42,8 @@ uint8_t generateDynamicKey(uint8_t seqNum);
 // Formula: CHK = B0 ^ B1 ^ B2 ^ B3
 uint8_t calculateChecksum(const uint8_t packet[PACKET_SIZE]);
 
-// Encrypts both payload bytes, assembles a complete 5-byte packet, and
-// transmits it over the hardware serial line.
+// Low-level helper: encrypts both payload bytes, assembles the 5-byte frame
+// and transmits it. Called by formAndSendPacket and on retransmissions.
 void sendPacket(uint8_t noteIndex, uint8_t noteDuration, uint8_t seqNum);
 
 // Display helper 
