@@ -16,3 +16,8 @@ const uint8_t PACKET_IDX_NOTE     = 1;
 const uint8_t PACKET_IDX_DURATION = 2;
 const uint8_t PACKET_IDX_SEQ      = 3;
 const uint8_t PACKET_IDX_CHECKSUM = 4;
+
+// Service bytes 
+const uint8_t START_MARKER = 0xAA; // Frame delimiter; marks the beginning of a packet
+const uint8_t ACK_BYTE     = 0x06; // Positive acknowledgement (packet received correctly)
+const uint8_t NACK_BYTE    = 0x15; // Negative acknowledgement (checksum mismatch, resend)
