@@ -10,19 +10,24 @@
  
 
 // Hardware pins 
-const uint8_t RX_BUZZER_PIN = 9;   // PWM-capable pin connected to the piezo speaker
+const uint8_t RX_BUZZER_PIN = 9;    // PWM-capable pin connected to the piezo speaker
 const uint8_t RX_LCD_ADDR   = 0x27; // I2C address of the Aip31068 LCD
 
-// Note dictionary size 
+// Note dictionary size
 // The receiver's "universal dictionary" maps a note index to a frequency in Hz.
-const uint8_t NOTE_DICT_SIZE = 16;
+// Indices 0-20 cover the full range of notes used by any melody the TX may send.
+const uint8_t NOTE_DICT_SIZE = 21;
+
+const uint8_t RX_LCD_COLS   = 16;
+const uint8_t RX_LCD_ROWS   = 2;
 
 // Finite State Machine states 
 // The entire RX logic is driven by this FSM; no blocking delays allowed.
 enum class RxState : uint8_t {
   WAITING_FOR_START,   // Discarding bytes until 0xAA is found
   READING_PAYLOAD,     // Buffering bytes 1-4 of the incoming packet
-  VALIDATING_CHECKSUM, // All 5 bytes received; verifying integrity
+  GOT_PACKET,          // All 5 bytes collected; resolved in rx_loop()
+  VALIDATING_CHECKSUM, // Checksum check in progress (Stage 3)
   EXECUTING_ACTION     // Checksum valid; decrypting payload and playing the note
 };
 
