@@ -10,7 +10,7 @@
 
 // Hardware pins 
 const uint8_t  TX_BUTTON_PIN    = 2;     // Tactile start button (INPUT_PULLUP)
-const uint8_t  TX_LCD_ADDR      = 0x27;  // I2C address of the Aip31068 LCD
+const uint8_t  TX_LCD_ADDR      = 0x3E;  // I2C address of the Aip31068 LCD
 const uint8_t  TX_LCD_COLS      = 16;
 const uint8_t  TX_LCD_ROWS      = 2;
 
