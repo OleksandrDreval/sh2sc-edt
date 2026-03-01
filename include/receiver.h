@@ -40,6 +40,22 @@ void rx_loop();
 // Drives the FSM forward based on the received byte.
 void processReceivedByte(uint8_t inByte);
 
+// Decoded payload returned by validateAndDecrypt().
+// isValid == false means the checksum failed and the fields must not be used.
+struct DecryptedNote {
+  uint8_t noteIndex;    // Plain-text index into universal_notes[]
+  uint8_t durationMs10; // Plain-text duration in tens of milliseconds
+  bool    isValid;      // true only when the checksum matched
+};
+
+// Core validation + decryption function.
+// 1. Recomputes CHK_expected = B0^B1^B2^B3 and compares with buffer[4].
+// 2a. Mismatch → sends NACK_BYTE on Serial, returns {0, 0, false}.
+// 2b. Match    → sends ACK_BYTE, decrypts both payload bytes via
+//              K_dynamic = SECRET_KEY ^ seqNum, calls startNote(),
+//              and returns the decoded data in a DecryptedNote struct.
+DecryptedNote validateAndDecrypt(uint8_t* buffer);
+
 // Recomputes the expected checksum from the received packet bytes and
 // compares it to the transmitted checksum (packet[4]).
 // Returns true if the packet is intact; false if corrupted by noise.
