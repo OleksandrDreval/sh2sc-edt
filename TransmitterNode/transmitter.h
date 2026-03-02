@@ -9,10 +9,11 @@
  
 
 // Hardware pins 
-const uint8_t  TX_BUTTON_PIN    = 3;     // Tactile start button (INPUT_PULLUP)
-const uint8_t  TX_LCD_ADDR      = 0x3E;  // I2C address of the Aip31068 LCD
-const uint8_t  TX_LCD_COLS      = 16;
-const uint8_t  TX_LCD_ROWS      = 2;
+const uint8_t  TX_BUTTON_PIN        = 3;     // Tactile start button (INPUT_PULLUP)
+const uint8_t  ENTROPY_RING_OSC_PIN = 2;     // Hardware ring oscillator (chaos source)
+const uint8_t  TX_LCD_ADDR          = 0x3E;  // I2C address of the Aip31068 LCD
+const uint8_t  TX_LCD_COLS          = 16;
+const uint8_t  TX_LCD_ROWS          = 2;
 
 // Button debounce 
 const uint16_t DEBOUNCE_DELAY_MS = 50;   // Milliseconds a signal must be stable
@@ -59,3 +60,14 @@ void formAndSendPacket(uint8_t note_idx, uint16_t duration_ms);
 // Row 1: current FSM state label.
 // Never call in a tight loop — only on FSM state transitions.
 void updateTxDisplay(TxState state, uint8_t seqNum, uint8_t retries);
+
+// Entropy pool generator (TX variant) 
+// Harvests hardware entropy from four sources and folds them into a 32-bit nonce.
+// Sources:
+//   1. Ring oscillator on pin 2 (INT0): pulse count over a 2 ms gate window.
+//   2. First 64 bytes of uninitialised SRAM (address 0x0100 on ATmega328P).
+//   3. On-die temperature ADC (channel 8, 1.1 V ref): 8 LSBs from 8 conversions.
+//   4. TCNT1 free-running timer snapshot.
+//   5. micros() at the moment of the button press (human-timing jitter, TX only).
+// Calling convention: invoke once per button press, AFTER readButtonPress() fires.
+uint32_t generateEntropyPool();
