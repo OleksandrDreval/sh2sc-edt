@@ -28,6 +28,15 @@ const uint8_t NACK_BYTE    = 0x15; // Negative acknowledgement (checksum mismatc
 // each time it is sent with a different sequence number.
 const uint8_t SECRET_KEY = 0x3F;
 
+// REST / pause sentinel
+// When TX sends this note index, RX must silence the buzzer instead of playing a tone.
+const uint8_t REST_INDEX = 255;
+
+// Duration encoding unit (milliseconds per packet byte unit).
+// Payload byte carries duration in DURATION_UNIT_MS steps so that one uint8_t
+// can represent values up to 255 * 20 = 5 100 ms — enough for the longest pauses.
+const uint8_t DURATION_UNIT_MS = 20;
+
 // Stop-and-Wait ARQ timing 
 const uint32_t ACK_TIMEOUT_MS = 50UL;  // Max milliseconds to wait for ACK before retransmitting
 const uint8_t  MAX_RETRIES    = 3;     // Maximum consecutive retransmissions before skipping note
