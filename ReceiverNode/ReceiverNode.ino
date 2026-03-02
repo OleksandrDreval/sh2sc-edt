@@ -171,10 +171,24 @@ DecryptedNote validateAndDecrypt(uint8_t* buffer) {
   const uint8_t key       = SECRET_KEY ^ seqNumber;
 
   // Step 5: XOR decryption (M = C ^ K_dynamic)
-  const uint8_t noteIndex    = buffer[PACKET_IDX_NOTE]     ^ key;
-  const uint8_t durationTens = buffer[PACKET_IDX_DURATION] ^ key;
+  const uint8_t noteIndex      = buffer[PACKET_IDX_NOTE]     ^ key;
+  const uint8_t durationEncoded = buffer[PACKET_IDX_DURATION] ^ key;
 
-  // Step 6: bounds check — guard against out-of-range index
+  // Convert encoded duration unit back to milliseconds.
+  // TX packed the value as (duration_ms / DURATION_UNIT_MS), so invert here.
+  const uint16_t durationMs = static_cast<uint16_t>(durationEncoded) * DURATION_UNIT_MS;
+
+  // Step 6a: handle REST/pause — valid packet, but buzzer must be silent.
+  // Index 255 (REST_INDEX) is intentional silence, not a corruption artefact.
+  if (noteIndex == REST_INDEX) {
+    stopNote();  // Silence buzzer and clear the isPlayingNote flag.
+    result.noteIndex    = REST_INDEX;
+    result.durationMs10 = durationEncoded;
+    result.isValid      = true;
+    return result;
+  }
+
+  // Step 6b: bounds check — guard against truly out-of-range indices
   if (noteIndex >= NOTE_DICT_SIZE) {
     // Packet passed checksum but contains an invalid note index.
     // This should not happen in normal operation; skip playback silently.
@@ -184,12 +198,11 @@ DecryptedNote validateAndDecrypt(uint8_t* buffer) {
 
   // Step 7: look up frequency and trigger non-blocking playback ---
   const uint16_t frequencyHz = universal_notes[noteIndex];
-  const uint16_t durationMs  = static_cast<uint16_t>(durationTens) * 10u;
   startNote(frequencyHz, durationMs);
 
   // Step 8: return decoded data for display / diagnostics ---
   result.noteIndex    = noteIndex;
-  result.durationMs10 = durationTens;
+  result.durationMs10 = durationEncoded;
   result.isValid      = true;
   return result;
 }
