@@ -334,7 +334,22 @@ uint32_t generateEntropyPool() {
   // this instruction boundary is not predictable between runs.
   pool = mixEntropy(pool, static_cast<uint32_t>(TCNT1));
 
-  // Source 5: Human-timing jitter (TX only)
+  // Source 5: A0 white noise generator (8 LSBs)
+  // A physical white noise circuit is wired to A0 on both boards.
+  // Reading the full 10-bit ADC value would correlate between adjacent samples,
+  // so only the LSB of each conversion is harvested — this is statistically
+  // the least predictable bit of the ADC output.
+  {
+    uint8_t a0Entropy = 0;
+    for (uint8_t i = 0; i < 8u; ++i) {
+      a0Entropy = static_cast<uint8_t>(
+          (a0Entropy << 1u) | (static_cast<uint8_t>(analogRead(A0)) & 0x01u)
+      );
+    }
+    pool = mixEntropy(pool, a0Entropy);
+  }
+
+  // Source 6: Human-timing jitter (TX only)
   // micros() captures the precise moment the operator pressed the start button.
   // Human reaction time has microsecond-level sub-structure that is
   // computationally unpredictable — ideal for seeding a PRNG.
