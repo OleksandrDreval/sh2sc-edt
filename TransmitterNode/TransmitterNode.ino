@@ -225,7 +225,7 @@ void sendPacket(uint8_t noteIndex, uint16_t noteDurationMs, uint8_t seqNumber) {
 //   1. Store plain-text payload as the pending retransmit snapshot.
 //   2. Generate K_dynamic = SECRET_KEY ^ seqNum  ← replay-attack mitigation.
 //   3. Encrypt: C_note = note_idx ^ K_dynamic
-//               C_dur  = duration_idx ^ K_dynamic
+//               C_dur  = duration_ms ^ K_dynamic
 //   4. Assemble 5-byte packet: [0xAA | C_note | C_dur | seqNum | CHK].
 //   5. Compute CHK = B0 ^ B1 ^ B2 ^ B3  (over ciphertext, not plaintext).
 //   6. Transmit via Serial.write().
@@ -236,7 +236,7 @@ void formAndSendPacket(uint8_t note_idx, uint16_t duration_ms) {
   pendingNoteDuration = duration_ms;
 
   // Delegate to sendPacket which owns the full assemble+encrypt+send pipeline.
-  sendPacket(note_idx, duration_idx, seqNum);
+  sendPacket(note_idx, duration_ms, seqNum);
 }
 
  
