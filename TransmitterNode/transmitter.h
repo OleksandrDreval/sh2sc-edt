@@ -20,9 +20,10 @@ const uint16_t DEBOUNCE_DELAY_MS = 50;   // Milliseconds a signal must be stable
 // Finite State Machine states 
 // The entire TX logic is driven by this FSM; no blocking delays allowed.
 enum class TxState : uint8_t {
-  IDLE,        // Waiting for button press to start melody playback
-  SENDING,     // Forming, encrypting and transmitting the current packet
-  WAITING_ACK  // Packet sent; listening on the feedback line for ACK or NACK
+  IDLE,                // Waiting for button press to start melody playback
+  SENDING,             // Forming, encrypting and transmitting the current packet
+  WAITING_ACK,         // Packet sent; listening on the feedback line for ACK or NACK
+  WAIT_BETWEEN_NOTES   // ACK received; holding the inter-note pause before advancing
 };
 
 // Public API 
@@ -44,13 +45,14 @@ uint8_t calculateChecksum(const uint8_t packet[PACKET_SIZE]);
 
 // Low-level helper: encrypts both payload bytes, assembles the 5-byte frame
 // and transmits it. Called by formAndSendPacket and on retransmissions.
-void sendPacket(uint8_t noteIndex, uint8_t noteDuration, uint8_t seqNum);
+// noteDurationMs is in real milliseconds; encoding to packet units happens here.
+void sendPacket(uint8_t noteIndex, uint16_t noteDurationMs, uint8_t seqNum);
 
 // High-level send entry point used by the FSM SENDING state.
-// Takes raw (plain-text) note_idx and duration_idx, stores them as
+// Takes raw (plain-text) note_idx and duration_ms (milliseconds), stores them as
 // the pending retransmit payload, then delegates to sendPacket().
 // The module-level seqNum is consumed automatically.
-void formAndSendPacket(uint8_t note_idx, uint8_t duration_idx);
+void formAndSendPacket(uint8_t note_idx, uint16_t duration_ms);
 
 // Display helper 
 // Row 0: current packet number (seqNum) + consecutive retry counter.
