@@ -602,3 +602,5 @@ $RECYCLE.BIN/
 
 # Simulation scheme files
 *.sim1
+
+bin/*
