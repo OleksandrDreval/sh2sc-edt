@@ -8,6 +8,7 @@ the Arduino receiver node's 21-note dictionary (C4 to G#5).
 
 Usage:
     python midi_to_cpp.py <path_to_file.mid>
+    python midi_to_cpp.py <path_to_file.mid> --start 10 --end 30
     python midi_to_cpp.py          # will prompt for path interactively
 """
 
@@ -210,6 +211,47 @@ def build_melody(
     return melody
 
 
+# Time slicing
+
+def slice_melody(
+    melody: list[tuple[int, int]],
+    start_ms: float,
+    end_ms: float | None,
+) -> list[tuple[int, int]]:
+    """
+    Return the portion of melody that falls within [start_ms, end_ms).
+
+    - Entries entirely before start_ms are skipped.
+    - The first kept entry is clipped so no huge leading pause is emitted.
+    - Processing stops as soon as accumulated time reaches end_ms.
+    """
+    result: list[tuple[int, int]] = []
+    accumulated_ms: float = 0.0
+
+    for note_index, duration_ms in melody:
+        entry_start = accumulated_ms
+        entry_end = accumulated_ms + duration_ms
+        accumulated_ms = entry_end
+
+        # Entirely before the window: skip
+        if entry_end <= start_ms:
+            continue
+
+        # Entirely after the window: stop
+        if end_ms is not None and entry_start >= end_ms:
+            break
+
+        # Clip the entry to fit within [start_ms, end_ms)
+        clipped_start = max(entry_start, start_ms)
+        clipped_end = entry_end if end_ms is None else min(entry_end, end_ms)
+        clipped_duration = int(clipped_end - clipped_start)
+
+        if clipped_duration > 0:
+            result.append((note_index, clipped_duration))
+
+    return result
+
+
 # C++ code generation
 
 def render_cpp(melody: list[tuple[int, int]]) -> str:
@@ -234,7 +276,11 @@ def render_cpp(melody: list[tuple[int, int]]) -> str:
 
 # Main entry point
 
-def convert(midi_path: str) -> None:
+def convert(
+    midi_path: str,
+    start_s: float = 0.0,
+    end_s: float | None = None,
+) -> None:
     """Load, parse, and print the C++ representation of a MIDI file."""
     path = Path(midi_path)
 
@@ -265,12 +311,30 @@ def convert(midi_path: str) -> None:
         print("Error: Could not extract any notes from the MIDI file.", file=sys.stderr)
         sys.exit(1)
 
+    # Apply time slicing when start/end are explicitly requested
+    start_ms = start_s * 1000.0
+    end_ms = end_s * 1000.0 if end_s is not None else None
+    melody = slice_melody(melody, start_ms, end_ms)
+
+    if not melody:
+        print(
+            f"Error: No notes found in the time range "
+            f"{start_s}s – {end_s if end_s is not None else 'end'}.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # Format the trim range for the summary line
+    end_label = f"{end_s}s" if end_s is not None else "end"
+    trim_label = f"{start_s}s to {end_label}"
+
     # --- Summary to stderr so it doesn't pollute the C++ stdout output ---
     print(f"// Source  : {path.name}", file=sys.stderr)
     print(f"// Notes   : {len(melody)}", file=sys.stderr)
     print(f"// Tempo   : {DEFAULT_TEMPO_US // 1000} BPM base "
           f"({len(tempo_map)} tempo segment(s))", file=sys.stderr)
     print(f"// Ticks/beat: {midi_file.ticks_per_beat}", file=sys.stderr)
+    print(f"// Trim    : {trim_label}", file=sys.stderr)
     print("", file=sys.stderr)
 
     print(render_cpp(melody))
@@ -283,6 +347,8 @@ def parse_args() -> argparse.Namespace:
         epilog=(
             "Examples:\n"
             "  python midi_to_cpp.py mario.mid\n"
+            "  python midi_to_cpp.py mario.mid --start 10 --end 30\n"
+            "  python midi_to_cpp.py mario.mid -s 5.5\n"
             "  python midi_to_cpp.py          # interactive prompt\n"
         ),
     )
@@ -290,6 +356,20 @@ def parse_args() -> argparse.Namespace:
         "midi_file",
         nargs="?",
         help="Path to the .mid file to convert.",
+    )
+    parser.add_argument(
+        "-s", "--start",
+        type=float,
+        default=0.0,
+        metavar="SEC",
+        help="Start time in seconds (default: 0).",
+    )
+    parser.add_argument(
+        "-e", "--end",
+        type=float,
+        default=None,
+        metavar="SEC",
+        help="End time in seconds (default: end of file).",
     )
     return parser.parse_args()
 
@@ -305,7 +385,7 @@ def main() -> None:
         print("Error: No file path provided.", file=sys.stderr)
         sys.exit(1)
 
-    convert(midi_path)
+    convert(midi_path, start_s=args.start, end_s=args.end)
 
 
 if __name__ == "__main__":
