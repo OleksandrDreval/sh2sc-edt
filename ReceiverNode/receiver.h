@@ -10,8 +10,9 @@
  
 
 // Hardware pins 
-const uint8_t RX_BUZZER_PIN = 9;    // PWM-capable pin connected to the piezo speaker
-const uint8_t RX_LCD_ADDR   = 0x3E; // I2C address of the Aip31068 LCD
+const uint8_t RX_BUZZER_PIN         = 9;    // PWM-capable pin connected to the piezo speaker
+const uint8_t ENTROPY_RING_OSC_PIN  = 2;    // Hardware ring oscillator (chaos source)
+const uint8_t RX_LCD_ADDR           = 0x3E; // I2C address of the Aip31068 LCD
 
 // Note dictionary size
 // The receiver's "universal dictionary" maps a note index to a frequency in Hz.
@@ -76,3 +77,14 @@ void stopNote();
 // Updates the I2C LCD with current FSM state and last received sequence number
 // without blocking the main loop.
 void updateRxDisplay(RxState state, uint8_t seqNum, bool checksumOk);
+
+// Entropy pool generator (RX variant) 
+// Harvests hardware entropy from four sources and folds them into a 32-bit nonce.
+// Sources:
+//   1. Ring oscillator on pin 2 (INT0): pulse count over a 2 ms gate window.
+//   2. First 64 bytes of uninitialised SRAM (address 0x0100 on ATmega328P).
+//   3. On-die temperature ADC (channel 8, 1.1 V ref): 8 LSBs from 8 conversions.
+//   4. TCNT1 free-running timer snapshot.
+// NOTE: RX has no button, so human-timing jitter (micros()) is intentionally omitted.
+// Calling convention: invoke once during rx_setup() before the UART loop starts.
+uint32_t generateEntropyPool();

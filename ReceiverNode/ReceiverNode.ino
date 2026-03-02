@@ -228,6 +228,81 @@ void decryptAndPlay(const uint8_t packet[PACKET_SIZE]) {
   validateAndDecrypt(const_cast<uint8_t*>(packet));
 }
 
+// ENTROPY POOL  (RX variant — no button, omits human-timing jitter)
+
+// Pulse counter incremented by the ring oscillator ISR on pin 2 (INT0).
+// volatile prevents the compiler from caching the value in a register.
+static volatile uint32_t s_ringOscPulses = 0;
+static void onRingOscPulse() { ++s_ringOscPulses; }
+
+// mixEntropy — one step of the cryptographic sponge.
+// Rotates the pool left by 1 bit, then XOR-folds in new entropy bits.
+static inline uint32_t mixEntropy(uint32_t pool, uint32_t bits) {
+  return ((pool << 1u) | (pool >> 31u)) ^ bits;
+}
+
+// generateEntropyPool (RX) — four entropy sources, returns a 32-bit nonce.
+// Called once in rx_setup() before the UART listening loop starts.
+uint32_t generateEntropyPool() {
+  uint32_t pool = 0;
+
+  // Source 1: Ring oscillator gate (pin 2, INT0)
+  // Open a 2 ms interrupt window; count rising edges from the chaos oscillator.
+  // delay(2) is intentional — this is a one-shot harvest during rx_setup(),
+  // NEVER inside the main ARQ rx_loop().
+  s_ringOscPulses = 0;
+  attachInterrupt(digitalPinToInterrupt(ENTROPY_RING_OSC_PIN),
+                  onRingOscPulse, RISING);
+  delay(2);
+  detachInterrupt(digitalPinToInterrupt(ENTROPY_RING_OSC_PIN));
+  pool = mixEntropy(pool, s_ringOscPulses);
+
+  // Source 2: SRAM chaos (first 64 uninitialised bytes at 0x0100)
+  // Power-on transistor mismatch leaves these bytes in a unique random state
+  // that changes between different boards and boot cycles.
+  const uint8_t* sramBase = reinterpret_cast<const uint8_t*>(0x0100);
+  for (uint8_t i = 0; i < 64u; ++i) {
+    pool = mixEntropy(pool, sramBase[i]);
+  }
+
+  // Source 3: On-die temperature ADC (ATmega328P channel 8, 1.1 V ref)
+  // ADMUX = 0xC8:  REFS1=1, REFS0=1  (1.1 V internal reference)
+  //                MUX3=1, MUX2..0=0 (selects the temperature diode, ch.8)
+  // Only the LSB of each conversion is harvested to maximise entropy density.
+  {
+    const uint8_t savedAdmux = ADMUX;
+    ADMUX   = _BV(REFS1) | _BV(REFS0) | _BV(MUX3);  // 0xC8
+    ADCSRA |= _BV(ADEN);                            // Ensure ADC is enabled
+
+    // First conversion after a reference/channel change must be discarded (ATmega328P
+    // datasheet §24.4: "The first ADC conversion result after switching reference
+    // voltage source may be inaccurate").
+    ADCSRA |= _BV(ADSC);
+    while (ADCSRA & _BV(ADSC)) {}
+
+    // Collect 8 LSBs from 8 independent conversions and pack into one byte.
+    uint8_t adcEntropy = 0;
+    for (uint8_t i = 0; i < 8u; ++i) {
+      ADCSRA |= _BV(ADSC);
+      while (ADCSRA & _BV(ADSC)) {}
+      adcEntropy = static_cast<uint8_t>((adcEntropy << 1u) | (ADCL & 0x01u));
+    }
+    pool  = mixEntropy(pool, adcEntropy);
+    ADMUX = savedAdmux;  // Restore caller's ADC configuration
+  }
+
+  // Source 4: TCNT1 timer jitter
+  // Timer 1 is a free-running 16-bit counter at 16 MHz; its exact value at
+  // this instruction boundary is not predictable between runs.
+  pool = mixEntropy(pool, static_cast<uint32_t>(TCNT1));
+
+  // NOTE: micros() / button-timing entropy is intentionally absent on RX.
+  // The receiver has no human-operated input device — this source would add
+  // zero unpredictability and is simply omitted.
+
+  return pool;
+}
+
  
 // ARDUINO ENTRY POINTS
  
