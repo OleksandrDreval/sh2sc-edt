@@ -62,12 +62,15 @@ void formAndSendPacket(uint8_t note_idx, uint16_t duration_ms);
 void updateTxDisplay(TxState state, uint8_t seqNum, uint8_t retries);
 
 // Entropy pool generator (TX variant) 
-// Harvests hardware entropy from four sources and folds them into a 32-bit nonce.
-// Sources:
+// Fills outputSeed[32] with 256 bits of harvested hardware entropy.
+// Each of the 8 words is independently gathered from all 7 sources:
 //   1. Ring oscillator on pin 2 (INT0): pulse count over a 2 ms gate window.
-//   2. First 64 bytes of uninitialised SRAM (address 0x0100 on ATmega328P).
-//   3. On-die temperature ADC (channel 8, 1.1 V ref): 8 LSBs from 8 conversions.
+//   2. Eight uninitialised SRAM bytes (8 per word, window at 0x0100+wordIndex*8).
+//   3. On-die temperature ADC (channel 8, 1.1 V ref): 8 LSBs per word.
 //   4. TCNT1 free-running timer snapshot.
-//   5. micros() at the moment of the button press (human-timing jitter, TX only).
+//   5. A0 white noise generator: 8 LSBs per word.
+//   6. micros() at the moment of the button press (human-timing jitter, TX only).
+//   7. Arduino software PRNG random() (obfuscation layer).
+// Total harvest time ≈ 8 × 2 ms gate = ~16 ms — acceptable for a one-shot call.
 // Calling convention: invoke once per button press, AFTER readButtonPress() fires.
-uint32_t generateEntropyPool();
+void generateEntropyPool(uint8_t* outputSeed);
