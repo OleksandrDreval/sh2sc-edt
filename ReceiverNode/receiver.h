@@ -79,12 +79,14 @@ void stopNote();
 void updateRxDisplay(RxState state, uint8_t seqNum, bool checksumOk);
 
 // Entropy pool generator (RX variant) 
-// Harvests hardware entropy from four sources and folds them into a 32-bit nonce.
-// Sources:
+// Fills outputSeed[32] with 256 bits of harvested hardware entropy.
+// Each of the 8 words is independently gathered from all 6 sources:
 //   1. Ring oscillator on pin 2 (INT0): pulse count over a 2 ms gate window.
-//   2. First 64 bytes of uninitialised SRAM (address 0x0100 on ATmega328P).
-//   3. On-die temperature ADC (channel 8, 1.1 V ref): 8 LSBs from 8 conversions.
+//   2. Eight uninitialised SRAM bytes (8 per word, window at 0x0100+wordIndex*8).
+//   3. On-die temperature ADC (channel 8, 1.1 V ref): 8 LSBs per word.
 //   4. TCNT1 free-running timer snapshot.
+//   5. A0 white noise generator: 8 LSBs per word.
+//   6. Arduino software PRNG random() (obfuscation layer).
 // NOTE: RX has no button, so human-timing jitter (micros()) is intentionally omitted.
 // Calling convention: invoke once during rx_setup() before the UART loop starts.
-uint32_t generateEntropyPool();
+void generateEntropyPool(uint8_t* outputSeed);
