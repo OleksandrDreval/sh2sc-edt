@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include "protocol.h"
+#include "csprng.h"
 
  
 // RECEIVER (Node B) — "The Synthesizer"

@@ -331,6 +331,16 @@ void rx_setup() {
 
   updateRxDisplay(currentState, 0, false);
 
+  // Harvest 256-bit hardware entropy and seed the ChaCha20 CSPRNG.
+  // ~16 ms total (8 ring-oscillator gate windows of 2 ms each) — one-time cost.
+  // The seed is scrubbed from the stack immediately after handing it to the cipher.
+  {
+    uint8_t entropySeed[32];
+    generateEntropyPool(entropySeed);
+    initCSPRNG(entropySeed);
+    memset(entropySeed, 0, sizeof(entropySeed));
+  }
+
   // ENTROPY TEST (remove after validation)
   // Harvest entropy immediately after hardware init so SRAM chaos bytes retain
   // their power-on state and the ring oscillator has a fresh count window.
