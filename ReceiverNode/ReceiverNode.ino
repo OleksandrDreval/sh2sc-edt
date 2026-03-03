@@ -315,6 +315,13 @@ uint32_t generateEntropyPool() {
   // The receiver has no human-operated input device — this source would add
   // zero unpredictability and is simply omitted.
 
+  // Source 6: Arduino software PRNG (obfuscation layer)
+  // random() is a deterministic LCG seeded earlier by the hardware sources above
+  // (via the implicit global state of the Arduino runtime). It adds an additional
+  // obfuscation pass that makes reverse-engineering the pool harder without
+  // knowledge of the internal PRNG state.
+  pool = mixEntropy(pool, static_cast<uint32_t>(random()));
+
   return pool;
 }
 
