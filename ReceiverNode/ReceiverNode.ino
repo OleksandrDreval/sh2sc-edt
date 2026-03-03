@@ -338,6 +338,23 @@ void rx_setup() {
   bytesReceived = 0;
 
   updateRxDisplay(currentState, 0, false);
+
+  // ENTROPY TEST (remove after validation)
+  // Harvest entropy immediately after hardware init so SRAM chaos bytes retain
+  // their power-on state and the ring oscillator has a fresh count window.
+//{
+//  const uint32_t testNonce = generateEntropyPool();
+//  lcd.clear();
+//  lcd.setCursor(0, 0);
+//  lcd.print("RX KEY:");
+//  lcd.setCursor(0, 1);
+//  lcd.print(testNonce, HEX);  // e.g. "5D8E0F41"
+//  delay(3000);                // Hold result on screen for 3 s
+    // Restore the standard WAITING_FOR_START display before entering rx_loop().
+//  lcd.clear();
+//  updateRxDisplay(currentState, 0, false);
+//}
+  // END ENTROPY TEST
 }
 
 void rx_loop() {
