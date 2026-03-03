@@ -604,3 +604,6 @@ $RECYCLE.BIN/
 *.sim1
 
 bin/*
+
+# VSCode JSON settings
+.vscode/*.json
