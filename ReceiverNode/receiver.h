@@ -3,11 +3,13 @@
 #include <Arduino.h>
 #include "protocol.h"
 #include "csprng.h"
+#include <ChaChaPoly.h>
 
  
 // RECEIVER (Node B) — "The Synthesizer"
 // Knows nothing about the melody; holds only a universal frequency dictionary.
 // Validates, decrypts each packet and plays the corresponding note.
+// Crypto: ChaCha20-Poly1305 with per-session nonce delivered via HelloPacket.
  
 
 // Hardware pins 
@@ -26,46 +28,35 @@ const uint8_t RX_LCD_ROWS   = 2;
 // Finite State Machine states 
 // The entire RX logic is driven by this FSM; no blocking delays allowed.
 enum class RxState : uint8_t {
-  WAITING_FOR_START,   // Discarding bytes until 0xAA is found
-  READING_PAYLOAD,     // Buffering bytes 1-4 of the incoming packet
-  GOT_PACKET,          // All 5 bytes collected; resolved in rx_loop()
-  VALIDATING_CHECKSUM, // Checksum check in progress (Stage 3)
-  EXECUTING_ACTION     // Checksum valid; decrypting payload and playing the note
+  WAITING_FOR_TYPE,   // Idle — waiting for the first byte of any packet (packet_type)
+  READING_HELLO,      // Collecting the 12-byte nonce body of a HelloPacket
+  READING_DATA,       // Collecting the 19-byte body of a DataPacket
+  GOT_HELLO,          // Full HelloPacket buffered; resolved in rx_loop()
+  GOT_DATA,           // Full DataPacket buffered; resolved in rx_loop()
+  EXECUTING_ACTION    // MAC verified; note is sounding (non-blocking wait)
 };
 
 // Public API 
 void rx_setup();
 void rx_loop();
 
-// Packet processing helpers 
+// Packet byte-level reception driver 
 // Called from rx_loop() for every byte that arrives on the serial port.
-// Drives the FSM forward based on the received byte.
+// Dispatches on packet_type and fills rx_buffer with the remaining frame bytes.
 void processReceivedByte(uint8_t inByte);
 
-// Decoded payload returned by validateAndDecrypt().
-// isValid == false means the checksum failed and the fields must not be used.
-struct DecryptedNote {
-  uint8_t noteIndex;    // Plain-text index into universal_notes[]
-  uint8_t durationMs10; // Plain-text duration in tens of milliseconds
-  bool    isValid;      // true only when the checksum matched
-};
+// HELLO handler — called from rx_loop() when GOT_HELLO is set.
+// Copies the buffered nonce into s_sessionNonce and installs MASTER_PSK.
+void processHelloBody();
 
-// Core validation + decryption function.
-// 1. Recomputes CHK_expected = B0^B1^B2^B3 and compares with buffer[4].
-// 2a. Mismatch → sends NACK_BYTE on Serial, returns {0, 0, false}.
-// 2b. Match    → sends ACK_BYTE, decrypts both payload bytes via
-//              K_dynamic = SECRET_KEY ^ seqNum, calls startNote(),
-//              and returns the decoded data in a DecryptedNote struct.
-DecryptedNote validateAndDecrypt(uint8_t* buffer);
-
-// Recomputes the expected checksum from the received packet bytes and
-// compares it to the transmitted checksum (packet[4]).
-// Returns true if the packet is intact; false if corrupted by noise.
-bool validateChecksum(const uint8_t packet[PACKET_SIZE]);
-
-// Decrypts both payload bytes using the dynamic key derived from seq_num,
-// looks up the frequency in the note dictionary and triggers tone playback.
-void decryptAndPlay(const uint8_t packet[PACKET_SIZE]);
+// DATA handler — called from rx_loop() when GOT_DATA is set.
+// Full ChaCha20-Poly1305 pipeline:
+//   1. Derive packetNonce = s_sessionNonce, last byte ^= rx_buffer[0] (seq_num).
+//   2. clear() → setKey(MASTER_PSK) → setIV(packetNonce).
+//   3. addAuthData({packet_type, seq_num}).
+//   4. decrypt(payload, 2 bytes).
+//   5. checkTag(mac, 16) — CRITICAL: if false → NACK, discard; if true → ACK.
+void authenticateAndPlay();
 
 // Starts playing a note at the given frequency for durationMs milliseconds.
 // Non-blocking: records the start time and relies on millis() for stop logic.
@@ -77,7 +68,7 @@ void stopNote();
 // Display helper 
 // Updates the I2C LCD with current FSM state and last received sequence number
 // without blocking the main loop.
-void updateRxDisplay(RxState state, uint8_t seqNum, bool checksumOk);
+void updateRxDisplay(RxState state, uint8_t seqNum, bool macOk);
 
 // Entropy pool generator (RX variant) 
 // Fills outputSeed[32] with 256 bits of harvested hardware entropy.

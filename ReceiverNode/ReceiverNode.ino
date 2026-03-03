@@ -4,8 +4,10 @@
 // Current responsibilities:
 //   - Initialise UART (9600) and I2C LCD (Aip31068).
 //   - Hold the universal note-frequency dictionary (indices 0–20).
-//   - Collect incoming bytes non-blocking into rx_buffer[5].
-//   - validateAndDecrypt(): verify checksum, send ACK/NACK, decrypt, play note.
+//   - FSM: dispatch incoming bytes by packet_type (0x01 HELLO / 0x02 DATA).
+//   - processHelloBody(): store session nonce, install MASTER_PSK key.
+//   - authenticateAndPlay(): full ChaCha20-Poly1305 authenticated decryption;
+//       checkTag() == false → NACK (note NEVER played); true → ACK + tone().
 //   - Non-blocking buzzer timing via millis().
 
 #include "receiver.h"
@@ -52,45 +54,57 @@ static LiquidCrystal_AIP31068_I2C lcd(RX_LCD_ADDR, RX_LCD_COLS, RX_LCD_ROWS);
 
 // RUNTIME STATE
 
-static RxState currentState  = RxState::WAITING_FOR_START;
+static RxState currentState  = RxState::WAITING_FOR_TYPE;
 
-// Static receive buffer — exactly PACKET_SIZE bytes, no heap allocation.
-static uint8_t rx_buffer[PACKET_SIZE];
-static uint8_t bytesReceived = 0; // How many bytes have been written into rx_buffer
+// Receive buffer for the BODY of a packet (bytes after the packet_type byte).
+// Maximum body size: DataPacket body = seq_num(1) + payload(2) + mac(16) = 19 bytes.
+// HelloPacket body = nonce(12) bytes.  Buffer is sized for the larger case.
+static const uint8_t RX_BUF_SIZE = 1u + DATA_PAYLOAD_SIZE + AUTH_TAG_SIZE; // 19
+static uint8_t  rx_buffer[RX_BUF_SIZE];
+static uint8_t  rx_bytesNeeded = 0;   // Countdown: how many body bytes still needed
+static uint8_t  rx_bytesIn     = 0;   // How many body bytes collected so far
+
+// Packet type byte of the frame currently being assembled.
+static uint8_t  s_rxPacketType = 0;
+
+// Session state — set after a valid HelloPacket is processed.
+static bool     s_sessionActive = false;           // false until first HELLO received
+static uint8_t  s_sessionNonce[HELLO_NONCE_SIZE];  // Base nonce from the last HelloPacket
+
+// ChaCha20-Poly1305 cipher instance (re-initialised per DATA packet via clear()).
+static ChaChaPoly s_cipher;
 
 // Non-blocking note playback timer.
 static uint32_t noteStartMs  = 0;    // millis() timestamp when the note began
 static uint16_t noteLengthMs = 0;    // How long the note should sound
 static bool     isPlayingNote = false;
 
-// Non-blocking "CHK ERR! NACK" error-flash timer.
-// When a corrupted packet arrives, the error message is shown for
-// CHK_ERR_DISPLAY_MS milliseconds, then the display reverts to normal.
-const uint16_t  CHK_ERR_DISPLAY_MS = 50;
+// Non-blocking MAC error display timer.
+const uint16_t  CHK_ERR_DISPLAY_MS = 500;
 static bool     isShowingError    = false;
 static uint32_t errorDisplayStart = 0;
 
 // DISPLAY HELPER
-// Updates the LCD only when called explicitly — never in a busy-loop.
-void updateRxDisplay(RxState state, uint8_t seqNum, bool checksumOk) {
+void updateRxDisplay(RxState state, uint8_t seqNum, bool macOk) {
   lcd.clear();
 
   // Row 0: FSM state label
   lcd.setCursor(0, 0);
   switch (state) {
-    case RxState::WAITING_FOR_START:   lcd.print("WAIT START");  break;
-    case RxState::READING_PAYLOAD:     lcd.print("READING...");  break;
-    case RxState::GOT_PACKET:          lcd.print("Got Packet");  break;
-    case RxState::VALIDATING_CHECKSUM: lcd.print("VALIDATING");  break;
-    case RxState::EXECUTING_ACTION:    lcd.print("PLAYING");     break;
+    case RxState::WAITING_FOR_TYPE: lcd.print(s_sessionActive ? "READY" : "NO KEY"); break;
+    case RxState::READING_HELLO:    lcd.print("HANDSHAKE");  break;
+    case RxState::READING_DATA:     lcd.print("READING..."); break;
+    case RxState::GOT_HELLO:        lcd.print("KEY SET");    break;
+    case RxState::GOT_DATA:         lcd.print("VERIFYING");  break;
+    case RxState::EXECUTING_ACTION: lcd.print("PLAYING");    break;
   }
 
-  // Row 1: sequence number — shown only after at least one packet has arrived
+  // Row 1: sequence number — shown only after at least one packet has been processed
   lcd.setCursor(0, 1);
-  if (state != RxState::WAITING_FOR_START && state != RxState::READING_PAYLOAD) {
+  if (state == RxState::EXECUTING_ACTION || state == RxState::GOT_DATA) {
     lcd.print("SEQ:");
     lcd.print(seqNum);
-    lcd.print(checksumOk ? " OK" : " ---");
+    lcd.print(macOk ? " OK" : " MAC!");
   }
 }
 
@@ -100,116 +114,155 @@ void updateRxDisplay(RxState state, uint8_t seqNum, bool checksumOk) {
 void processReceivedByte(uint8_t inByte) {
   switch (currentState) {
 
-    case RxState::WAITING_FOR_START:
-      // Any byte that is not the frame delimiter is noise — silently discard.
-      // This keeps the buffer clean even in the presence of channel corruption.
-      if (inByte == START_MARKER) {
-        rx_buffer[PACKET_IDX_START] = inByte;
-        bytesReceived = 1;
-        currentState  = RxState::READING_PAYLOAD;
+    case RxState::WAITING_FOR_TYPE:
+      // The very first byte of any frame is the packet_type discriminator.
+      // All other bytes at this stage are channel noise — silently discard.
+      if (inByte == PACKET_TYPE_HELLO) {
+        s_rxPacketType = PACKET_TYPE_HELLO;
+        rx_bytesNeeded = HELLO_NONCE_SIZE;  // 12 nonce bytes to follow
+        rx_bytesIn     = 0;
+        currentState   = RxState::READING_HELLO;
+        updateRxDisplay(currentState, 0, false);
+      } else if (inByte == PACKET_TYPE_DATA) {
+        // Gate DATA packets on session readiness: refuse if no HELLO seen yet.
+        if (!s_sessionActive) {
+          // Cannot authenticate without a session nonce — send NACK and wait.
+          Serial.write(NACK_BYTE);
+          break;
+        }
+        s_rxPacketType = PACKET_TYPE_DATA;
+        // Body layout: seq_num(1) + payload[2] + mac[16] = 19 bytes total.
+        rx_bytesNeeded = 1u + DATA_PAYLOAD_SIZE + AUTH_TAG_SIZE;
+        rx_bytesIn     = 0;
+        currentState   = RxState::READING_DATA;
+      }
+      // Any other first byte is noise — remain in WAITING_FOR_TYPE.
+      break;
+
+    case RxState::READING_HELLO:
+      rx_buffer[rx_bytesIn++] = inByte;
+      if (rx_bytesIn == rx_bytesNeeded) {
+        currentState = RxState::GOT_HELLO;
       }
       break;
 
-    case RxState::READING_PAYLOAD:
-      // Collect bytes 1–4 into the static buffer one at a time.
-      rx_buffer[bytesReceived] = inByte;
-      bytesReceived++;
-
-      if (bytesReceived == PACKET_SIZE) {
-        // All 5 bytes are in the buffer — hand control to rx_loop().
-        currentState = RxState::GOT_PACKET;
+    case RxState::READING_DATA:
+      rx_buffer[rx_bytesIn++] = inByte;
+      if (rx_bytesIn == rx_bytesNeeded) {
+        currentState = RxState::GOT_DATA;
       }
       break;
 
-    // Remaining states are resolved in rx_loop(), not here.
+    // GOT_HELLO, GOT_DATA and EXECUTING_ACTION are resolved in rx_loop().
     default:
       break;
   }
 }
 
-// CRYPTO & INTEGRITY FUNCTIONS
+// CRYPTO & AUTHENTICATION FUNCTIONS
 
-// validateChecksum — verifies the XOR frame integrity.
-// Recomputes CHK_expected = B0^B1^B2^B3 and compares with packet[4].
-// Returns true when the received frame is intact.
-bool validateChecksum(const uint8_t packet[PACKET_SIZE]) {
-  const uint8_t expected = packet[PACKET_IDX_START]
-                         ^ packet[PACKET_IDX_NOTE]
-                         ^ packet[PACKET_IDX_DURATION]
-                         ^ packet[PACKET_IDX_SEQ];
-  return (expected == packet[PACKET_IDX_CHECKSUM]);
+// processHelloBody — store session nonce and arm the cipher key.
+//
+// After this call:
+//   • s_sessionNonce holds the 12-byte CSPRNG nonce from TX.
+//   • MASTER_PSK is installed in s_cipher (setKey only — no IV yet).
+//   • s_sessionActive = true — DATA packets will now be accepted.
+//
+// Calling convention: invoke from rx_loop() exactly once per GOT_HELLO event.
+void processHelloBody() {
+  // rx_buffer[0..11] = nonce delivered inside the HelloPacket.
+  memcpy(s_sessionNonce, rx_buffer, HELLO_NONCE_SIZE);
+
+  // Pre-install the key so that per-packet handling only needs setIV().
+  s_cipher.clear();
+  s_cipher.setKey(MASTER_PSK, 32u);
+
+  s_sessionActive = true;
 }
 
-// validateAndDecrypt — the main RX crypto pipeline entry point.
+// authenticateAndPlay — full ChaCha20-Poly1305 RX pipeline.
 //
-// Workflow (mirrors the TX pipeline from 05_encryption_approach.instructions.md):
-//   1. Compute CHK_expected = B0^B1^B2^B3; compare with buffer[4].
-//   2. FAIL: send NACK_BYTE, return {0, 0, false}.
-//   3. PASS: send ACK_BYTE.
-//   4. Reconstruct K_dynamic = SECRET_KEY ^ buffer[PACKET_IDX_SEQ].
-//   5. Decrypt: noteIndex    = buffer[PACKET_IDX_NOTE]     ^ K_dynamic  (M = C ^ K)
-//               durationTens = buffer[PACKET_IDX_DURATION] ^ K_dynamic
-//   6. Bounds-check noteIndex against NOTE_DICT_SIZE.
-//   7. Look up frequency in universal_notes[], call startNote().
-//   8. Return filled DecryptedNote struct.
-DecryptedNote validateAndDecrypt(uint8_t* buffer) {
-  DecryptedNote result = {0, 0, false};
+// rx_buffer layout (set by processReceivedByte in READING_DATA state):
+//   rx_buffer[0]          — seq_num   (open header; part of AAD)
+//   rx_buffer[1..2]       — payload[2] (ChaCha20 ciphertext: note, duration)
+//   rx_buffer[3..18]      — mac[16]   (Poly1305 authentication tag)
+//
+// Security invariant: startNote() is called ONLY after checkTag() returns true.
+// A false tag means the frame was corrupted or forged; NACK is sent, no sound.
+void authenticateAndPlay() {
+  const uint8_t seqNum          = rx_buffer[0];
+  const uint8_t* ciphertext     = &rx_buffer[1];
+  const uint8_t* receivedMac    = &rx_buffer[1u + DATA_PAYLOAD_SIZE]; // &rx_buffer[3]
 
-  // Step 1-2: integrity check
-  if (!validateChecksum(buffer)) {
-    // Packet was corrupted by channel noise — request a retransmission.
-    Serial.write(NACK_BYTE);
-    return result; // isValid stays false
+  // Step 1 — Derive the per-packet IV.
+  // Base: s_sessionNonce (12 bytes received in HelloPacket).
+  // Modification: XOR the last byte with seqNum.
+  // This mirrors the TX derivation exactly; both sides get the same IV
+  // from only the public seqNum and the shared secret session nonce.
+  uint8_t packetNonce[HELLO_NONCE_SIZE];
+  memcpy(packetNonce, s_sessionNonce, HELLO_NONCE_SIZE);
+  packetNonce[HELLO_NONCE_SIZE - 1u] ^= seqNum;
+
+  // Step 2 — AAD: the two open (unauthenticated-but-bound) header bytes.
+  // Any tampering with packet_type or seq_num will cause checkTag() to fail.
+  const uint8_t aad[2] = { PACKET_TYPE_DATA, seqNum };
+
+  // Step 3 — Configure cipher for this specific packet.
+  s_cipher.clear();
+  s_cipher.setKey(MASTER_PSK, 32u);
+  s_cipher.setIV(packetNonce, HELLO_NONCE_SIZE);
+  s_cipher.addAuthData(aad, sizeof(aad));
+
+  // Step 4 — Decrypt payload (2 bytes: note_index, duration_encoded).
+  // decrypt() XORs ciphertext with the ChaCha20 keystream AND feeds the
+  // ciphertext into the Poly1305 state — both operations happen in one pass.
+  uint8_t plaintext[DATA_PAYLOAD_SIZE];
+  s_cipher.decrypt(plaintext, ciphertext, DATA_PAYLOAD_SIZE);
+
+  // CRITICAL Step 5 — Verify the Poly1305 authentication tag.
+  // checkTag() compares the internally computed tag against the received one
+  // in constant time to prevent timing side-channels.
+  // If the tag does not match: the packet was corrupted by noise or forged.
+  // Under no circumstances may the note be played before this check passes.
+  if (!s_cipher.checkTag(receivedMac, AUTH_TAG_SIZE)) {
+    Serial.write(NACK_BYTE);  // Request retransmission.
+    // Flash MAC error on LCD for CHK_ERR_DISPLAY_MS ms (non-blocking).
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("MAC FAIL! NACK");
+    lcd.setCursor(0, 1);
+    lcd.print("SEQ:");
+    lcd.print(seqNum);
+    errorDisplayStart = millis();
+    isShowingError    = true;
+    return; // Discard — do NOT proceed to tone playback.
   }
 
-  // Step 3: acknowledge clean packet
+  // Step 6 — Authentication PASSED.  Send ACK before playing.
   Serial.write(ACK_BYTE);
 
-  // Step 4: reconstruct the same dynamic key TX used for this packet
-  // K_dynamic = SECRET_KEY ^ seq_num  (changes every packet → no replay attacks)
-  const uint8_t seqNumber = buffer[PACKET_IDX_SEQ];
-  const uint8_t key       = SECRET_KEY ^ seqNumber;
+  // Step 7 — Decode plain-text fields.
+  const uint8_t  noteIndex       = plaintext[0];
+  const uint8_t  durationEncoded = plaintext[1];
+  const uint16_t durationMs      = static_cast<uint16_t>(durationEncoded) * DURATION_UNIT_MS;
 
-  // Step 5: XOR decryption (M = C ^ K_dynamic)
-  const uint8_t noteIndex      = buffer[PACKET_IDX_NOTE]     ^ key;
-  const uint8_t durationEncoded = buffer[PACKET_IDX_DURATION] ^ key;
-
-  // Convert encoded duration unit back to milliseconds.
-  // TX packed the value as (duration_ms / DURATION_UNIT_MS), so invert here.
-  const uint16_t durationMs = static_cast<uint16_t>(durationEncoded) * DURATION_UNIT_MS;
-
-  // Step 6a: handle REST/pause — valid packet, but buzzer must be silent.
-  // Index 255 (REST_INDEX) is intentional silence, not a corruption artefact.
+  // Step 8 — Handle REST (silence) vs. audible note.
   if (noteIndex == REST_INDEX) {
-    stopNote();  // Silence buzzer and clear the isPlayingNote flag.
-    result.noteIndex    = REST_INDEX;
-    result.durationMs10 = durationEncoded;
-    result.isValid      = true;
-    return result;
+    stopNote();  // Ensure buzzer is silenced for the duration of the rest.
+  } else if (noteIndex < NOTE_DICT_SIZE) {
+    startNote(universal_notes[noteIndex], durationMs);
   }
+  // If noteIndex is out of range but MAC was valid (should never happen with
+  // a cooperative TX), silently skip to avoid undefined behaviour on the array.
 
-  // Step 6b: bounds check — guard against truly out-of-range indices
-  if (noteIndex >= NOTE_DICT_SIZE) {
-    // Packet passed checksum but contains an invalid note index.
-    // This should not happen in normal operation; skip playback silently.
-    result.isValid = false;
-    return result;
-  }
-
-  // Step 7: look up frequency and trigger non-blocking playback ---
-  const uint16_t frequencyHz = universal_notes[noteIndex];
-  startNote(frequencyHz, durationMs);
-
-  // Step 8: return decoded data for display / diagnostics ---
-  result.noteIndex    = noteIndex;
-  result.durationMs10 = durationEncoded;
-  result.isValid      = true;
-  return result;
+  updateRxDisplay(RxState::EXECUTING_ACTION, seqNum, true);
 }
+
+// BUZZER HELPERS
 
 // startNote — begins buzzer output; non-blocking.
 // tone() configures the PWM hardware and returns immediately.
-// The note is silenced by stopNote() called from rx_loop() via millis().
+// The note is silenced by stopNote() which is called from rx_loop() via millis().
 void startNote(uint16_t frequencyHz, uint16_t durationMs) {
   tone(RX_BUZZER_PIN, frequencyHz);
   noteStartMs   = millis();
@@ -217,15 +270,10 @@ void startNote(uint16_t frequencyHz, uint16_t durationMs) {
   isPlayingNote = true;
 }
 
-// stopNote — silences the buzzer.
+// stopNote — silences the buzzer and clears the playback flag.
 void stopNote() {
   noTone(RX_BUZZER_PIN);
   isPlayingNote = false;
-}
-
-// decryptAndPlay — kept for API compatibility; delegates to validateAndDecrypt.
-void decryptAndPlay(const uint8_t packet[PACKET_SIZE]) {
-  validateAndDecrypt(const_cast<uint8_t*>(packet));
 }
 
 // ENTROPY POOL  (RX variant — no button, omits human-timing jitter)
@@ -326,8 +374,9 @@ void rx_setup() {
   // lcd.backlight();
 
   // Reset FSM and buffer.
-  currentState  = RxState::WAITING_FOR_START;
-  bytesReceived = 0;
+  currentState   = RxState::WAITING_FOR_TYPE;
+  rx_bytesIn     = 0;
+  rx_bytesNeeded = 0;
 
   updateRxDisplay(currentState, 0, false);
 
@@ -365,57 +414,62 @@ void rx_setup() {
 }
 
 void rx_loop() {
-  // Error-flash expiry: once CHK_ERR_DISPLAY_MS have elapsed, restore the
-  // normal WAITING_FOR_START display — fully non-blocking.
+  // MAC error-flash expiry: restore normal display after CHK_ERR_DISPLAY_MS ms.
   if (isShowingError && ((millis() - errorDisplayStart) >= CHK_ERR_DISPLAY_MS)) {
     isShowingError = false;
-    updateRxDisplay(RxState::WAITING_FOR_START, 0, false);
+    updateRxDisplay(RxState::WAITING_FOR_TYPE, 0, false);
   }
 
-  // Non-blocking note duration management
-  // Once the note has been sounding for its full duration, silence the buzzer.
-  // No delay() used: the comparison is O(1) and returns instantly.
+  // Non-blocking note duration management.
   if (isPlayingNote && ((millis() - noteStartMs) >= noteLengthMs)) {
     stopNote();
+    // Return to idle once the note has finished sounding.
+    if (currentState == RxState::EXECUTING_ACTION) {
+      currentState = RxState::WAITING_FOR_TYPE;
+      updateRxDisplay(currentState, 0, false);
+    }
   }
 
-  // Non-blocking UART reading
-  // Read as many bytes as are waiting in the hardware UART buffer right now.
+  // Non-blocking UART reading.
   while (Serial.available() > 0) {
     const uint8_t inByte = static_cast<uint8_t>(Serial.read());
     processReceivedByte(inByte);
   }
 
-  // Resolve GOT_PACKET — validate integrity, send ACK/NACK, decrypt, play.
+  // GOT_HELLO — install session nonce and key, then resume listening.
+  if (currentState == RxState::GOT_HELLO) {
+    currentState = RxState::GOT_HELLO;  // keep for display
+    updateRxDisplay(RxState::GOT_HELLO, 0, false);
+
+    processHelloBody();
+
+    // Reset buffer and return to top-level dispatch.
+    rx_bytesIn     = 0;
+    rx_bytesNeeded = 0;
+    currentState   = RxState::WAITING_FOR_TYPE;
+    updateRxDisplay(currentState, 0, false);
+  }
+
+  // GOT_DATA — authenticate + decrypt + play (or NACK on MAC failure).
   //
-  // FSM path on SUCCESS:  GOT_PACKET → VALIDATING_CHECKSUM → EXECUTING_ACTION → WAITING_FOR_START
-  // FSM path on FAILURE:  GOT_PACKET → VALIDATING_CHECKSUM → WAITING_FOR_START
-  if (currentState == RxState::GOT_PACKET) {
-    currentState = RxState::VALIDATING_CHECKSUM;
-
-    const DecryptedNote note = validateAndDecrypt(rx_buffer);
-    // ACK_BYTE (0x06) or NACK_BYTE (0x15) is already sent inside validateAndDecrypt.
-
-    if (note.isValid) {
-      // Checksum passed → tone() has been triggered inside startNote().
-      currentState = RxState::EXECUTING_ACTION;
-      updateRxDisplay(currentState, rx_buffer[PACKET_IDX_SEQ], true);
+  // FSM path SUCCESS: GOT_DATA → EXECUTING_ACTION → WAITING_FOR_TYPE (after note)
+  // FSM path FAILURE: GOT_DATA → WAITING_FOR_TYPE  (immediately, NACK sent)
+  if (currentState == RxState::GOT_DATA) {
+    authenticateAndPlay();
+    // authenticateAndPlay() either:
+    //   a) called startNote() + updateRxDisplay(EXECUTING_ACTION) → state stays until note ends
+    //   b) sent NACK and returned early → we must reset to WAITING_FOR_TYPE here
+    if (!isPlayingNote) {
+      // Auth failed (NACK path) or it was a REST — reset immediately.
+      rx_bytesIn     = 0;
+      rx_bytesNeeded = 0;
+      currentState   = RxState::WAITING_FOR_TYPE;
     } else {
-      // Checksum failed → NACK sent, TX will retransmit.
-      // Flash "CHK ERR! NACK" for CHK_ERR_DISPLAY_MS ms and then revert — non-blocking.
-      lcd.clear();
-      lcd.setCursor(0, 0);
-      lcd.print("CHK ERR! NACK");
-      lcd.setCursor(0, 1);
-      lcd.print("SEQ:");
-      lcd.print(rx_buffer[PACKET_IDX_SEQ]);
-      errorDisplayStart = millis();
-      isShowingError    = true;
+      // Auth succeeded — stay in EXECUTING_ACTION until note finishes.
+      currentState = RxState::EXECUTING_ACTION;
+      rx_bytesIn     = 0;
+      rx_bytesNeeded = 0;
     }
-
-    // Always reset the buffer so the FSM is ready for the next incoming packet.
-    bytesReceived = 0;
-    currentState  = RxState::WAITING_FOR_START;
   }
 }
 
