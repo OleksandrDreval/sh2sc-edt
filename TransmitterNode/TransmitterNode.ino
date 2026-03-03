@@ -367,6 +367,16 @@ void tx_setup() {
   lcd.init();
   // lcd.backlight();
 
+  // Harvest 256-bit hardware entropy and seed the ChaCha20 CSPRNG.
+  // ~16 ms total (8 ring-oscillator gate windows of 2 ms each) — one-time cost.
+  // The seed is scrubbed from the stack immediately after handing it to the cipher.
+  {
+    uint8_t entropySeed[32];
+    generateEntropyPool(entropySeed);
+    initCSPRNG(entropySeed);
+    memset(entropySeed, 0, sizeof(entropySeed));
+  }
+
   currentState = TxState::IDLE;
   updateTxDisplay(currentState, seqNum, retryCount);
 }
