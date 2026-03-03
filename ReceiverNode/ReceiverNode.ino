@@ -241,88 +241,73 @@ static inline uint32_t mixEntropy(uint32_t pool, uint32_t bits) {
   return ((pool << 1u) | (pool >> 31u)) ^ bits;
 }
 
-// generateEntropyPool (RX) — four entropy sources, returns a 32-bit nonce.
-// Called once in rx_setup() before the UART listening loop starts.
-uint32_t generateEntropyPool() {
-  uint32_t pool = 0;
-
-  // Source 1: Ring oscillator gate (pin 2, INT0)
-  // Open a 2 ms interrupt window; count rising edges from the chaos oscillator.
-  // delay(2) is intentional — this is a one-shot harvest during rx_setup(),
-  // NEVER inside the main ARQ rx_loop().
-  s_ringOscPulses = 0;
-  attachInterrupt(digitalPinToInterrupt(ENTROPY_RING_OSC_PIN),
-                  onRingOscPulse, RISING);
-  delay(2);
-  detachInterrupt(digitalPinToInterrupt(ENTROPY_RING_OSC_PIN));
-  pool = mixEntropy(pool, s_ringOscPulses);
-
-  // Source 2: SRAM chaos (first 64 uninitialised bytes at 0x0100)
-  // Power-on transistor mismatch leaves these bytes in a unique random state
-  // that changes between different boards and boot cycles.
+// generateEntropyPool (RX) — fills outputSeed[32] with 256 bits of entropy.
+// The 32-byte output is structured as 8 independent 32-bit words.
+// Each word is produced by a fresh pass over ALL six hardware sources.
+//
+// Total execution time: 8 iterations × 2 ms gate ≈ 16 ms (one-shot only).
+void generateEntropyPool(uint8_t* outputSeed) {
+  // SRAM base: 64 uninitialised bytes starting at 0x0100 on ATmega328P.
+  // Each word consumes a distinct 8-byte slice so the slices never repeat.
   const uint8_t* sramBase = reinterpret_cast<const uint8_t*>(0x0100);
-  for (uint8_t i = 0; i < 64u; ++i) {
-    pool = mixEntropy(pool, sramBase[i]);
-  }
 
-  // Source 3: On-die temperature ADC (ATmega328P channel 8, 1.1 V ref)
-  // ADMUX = 0xC8:  REFS1=1, REFS0=1  (1.1 V internal reference)
-  //                MUX3=1, MUX2..0=0 (selects the temperature diode, ch.8)
-  // Only the LSB of each conversion is harvested to maximise entropy density.
-  {
-    const uint8_t savedAdmux = ADMUX;
-    ADMUX   = _BV(REFS1) | _BV(REFS0) | _BV(MUX3);  // 0xC8
-    ADCSRA |= _BV(ADEN);                            // Ensure ADC is enabled
+  for (uint8_t wordIndex = 0; wordIndex < 8u; ++wordIndex) {
+    uint32_t pool = 0;
 
-    // First conversion after a reference/channel change must be discarded (ATmega328P
-    // datasheet §24.4: "The first ADC conversion result after switching reference
-    // voltage source may be inaccurate").
-    ADCSRA |= _BV(ADSC);
-    while (ADCSRA & _BV(ADSC)) {}
+    // Source 1: Ring oscillator gate (pin 2, INT0) — fresh 2 ms window per word.
+    s_ringOscPulses = 0;
+    attachInterrupt(digitalPinToInterrupt(ENTROPY_RING_OSC_PIN),
+                    onRingOscPulse, RISING);
+    delay(2);
+    detachInterrupt(digitalPinToInterrupt(ENTROPY_RING_OSC_PIN));
+    pool = mixEntropy(pool, s_ringOscPulses);
 
-    // Collect 8 LSBs from 8 independent conversions and pack into one byte.
-    uint8_t adcEntropy = 0;
+    // Source 2: SRAM chaos — 8 unique bytes per word (slice: wordIndex*8 .. +7).
     for (uint8_t i = 0; i < 8u; ++i) {
-      ADCSRA |= _BV(ADSC);
-      while (ADCSRA & _BV(ADSC)) {}
-      adcEntropy = static_cast<uint8_t>((adcEntropy << 1u) | (ADCL & 0x01u));
+      pool = mixEntropy(pool, sramBase[wordIndex * 8u + i]);
     }
-    pool  = mixEntropy(pool, adcEntropy);
-    ADMUX = savedAdmux;  // Restore caller's ADC configuration
-  }
 
-  // Source 4: TCNT1 timer jitter
-  // Timer 1 is a free-running 16-bit counter at 16 MHz; its exact value at
-  // this instruction boundary is not predictable between runs.
-  pool = mixEntropy(pool, static_cast<uint32_t>(TCNT1));
-
-  // Source 5: A0 white noise generator (8 LSBs)
-  // A physical white noise circuit is wired to A0 on both boards.
-  // Reading the full 10-bit ADC value would correlate between adjacent samples,
-  // so only the LSB of each conversion is harvested — this is statistically
-  // the least predictable bit of the ADC output.
-  {
-    uint8_t a0Entropy = 0;
-    for (uint8_t i = 0; i < 8u; ++i) {
-      a0Entropy = static_cast<uint8_t>(
-          (a0Entropy << 1u) | (static_cast<uint8_t>(analogRead(A0)) & 0x01u)
-      );
+    // Source 3: On-die temperature ADC (channel 8, 1.1 V ref) — 8 LSBs per word.
+    {
+      const uint8_t savedAdmux = ADMUX;
+      ADMUX   = _BV(REFS1) | _BV(REFS0) | _BV(MUX3);  // 0xC8
+      ADCSRA |= _BV(ADEN);
+      // Discard first conversion after reference change
+      ADCSRA |= _BV(ADSC); while (ADCSRA & _BV(ADSC)) {}
+      uint8_t adcEntropy = 0;
+      for (uint8_t i = 0; i < 8u; ++i) {
+        ADCSRA |= _BV(ADSC); while (ADCSRA & _BV(ADSC)) {}
+        adcEntropy = static_cast<uint8_t>((adcEntropy << 1u) | (ADCL & 0x01u));
+      }
+      pool  = mixEntropy(pool, adcEntropy);
+      ADMUX = savedAdmux;
     }
-    pool = mixEntropy(pool, a0Entropy);
+
+    // Source 4: TCNT1 timer jitter — unique value at each iteration boundary.
+    pool = mixEntropy(pool, static_cast<uint32_t>(TCNT1));
+
+    // Source 5: A0 white noise generator — 8 LSBs per word.
+    {
+      uint8_t a0Entropy = 0;
+      for (uint8_t i = 0; i < 8u; ++i) {
+        a0Entropy = static_cast<uint8_t>(
+            (a0Entropy << 1u) | (static_cast<uint8_t>(analogRead(A0)) & 0x01u)
+        );
+      }
+      pool = mixEntropy(pool, a0Entropy);
+    }
+
+    // NOTE: micros() is intentionally absent on RX — no human input device.
+
+    // Source 6: Arduino software PRNG (obfuscation layer).
+    pool = mixEntropy(pool, static_cast<uint32_t>(random()));
+
+    // Write the 32-bit word into the output seed as 4 bytes (little-endian).
+    outputSeed[wordIndex * 4u + 0u] = static_cast<uint8_t>(pool);
+    outputSeed[wordIndex * 4u + 1u] = static_cast<uint8_t>(pool >>  8u);
+    outputSeed[wordIndex * 4u + 2u] = static_cast<uint8_t>(pool >> 16u);
+    outputSeed[wordIndex * 4u + 3u] = static_cast<uint8_t>(pool >> 24u);
   }
-
-  // NOTE: micros() / button-timing entropy is intentionally absent on RX.
-  // The receiver has no human-operated input device — this source would add
-  // zero unpredictability and is simply omitted.
-
-  // Source 6: Arduino software PRNG (obfuscation layer)
-  // random() is a deterministic LCG seeded earlier by the hardware sources above
-  // (via the implicit global state of the Arduino runtime). It adds an additional
-  // obfuscation pass that makes reverse-engineering the pool harder without
-  // knowledge of the internal PRNG state.
-  pool = mixEntropy(pool, static_cast<uint32_t>(random()));
-
-  return pool;
 }
 
  
