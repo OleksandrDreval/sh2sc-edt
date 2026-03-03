@@ -15,12 +15,16 @@
 // Melody name: Star Wars — Imperial March
 
 #include <Arduino.h>
+#include <avr/pgmspace.h>  // pgm_read_word() — required to read PROGMEM data on AVR
 
 // Total number of note / rest entries in the melody table.
+// Flash usage: MELODY_LENGTH × 4 bytes (two uint16_t per row) = ~2120 bytes of Flash.
 static const uint16_t MELODY_LENGTH = 530;
 
 // melody[i][0] = note index,  melody[i][1] = duration (ms)
-static const uint16_t melody[MELODY_LENGTH][2] = {
+// Stored in Flash (PROGMEM) to avoid consuming 2120 bytes of SRAM.
+// Access via pgm_read_word(&melody[i][col]) — do NOT dereference directly.
+static const uint16_t melody[MELODY_LENGTH][2] PROGMEM = {
     {255, 3749},  // Pause, 3749 ms
     {  7,  133},  // G4, 133 ms
     {255, 4687},  // Pause, 4687 ms
