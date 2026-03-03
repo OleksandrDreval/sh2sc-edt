@@ -370,8 +370,8 @@ void tx_loop() {
       // seqNum is NOT yet incremented — it advances only on ACK so that
       // every retransmission of the same note reuses the same key.
       formAndSendPacket(
-          static_cast<uint8_t>(melody[melodyIndex][0]),
-          melody[melodyIndex][1]
+          static_cast<uint8_t>(pgm_read_word(&melody[melodyIndex][0])),
+          pgm_read_word(&melody[melodyIndex][1])
       );
       ackWaitStart = millis(); // Open the ACK receive window (50 ms).
       currentState = TxState::WAITING_ACK;
@@ -385,7 +385,7 @@ void tx_loop() {
         if (response == ACK_BYTE) {
           // ACK: packet intact → enter the inter-note pause before advancing.
           // melodyIndex is NOT incremented here — WAIT_BETWEEN_NOTES still
-          // needs melody[melodyIndex][1] to determine how long to pause.
+          // needs pgm_read_word(&melody[melodyIndex][1]) to determine how long to pause.
           retryCount    = 0;
           noteWaitStart = millis();
           currentState  = TxState::WAIT_BETWEEN_NOTES;
@@ -414,7 +414,7 @@ void tx_loop() {
       // Hold for the duration of the just-acknowledged note/pause before
       // sending the next packet. This preserves melody timing exactly,
       // including long pauses that exceed a single uint8_t in milliseconds.
-      if ((millis() - noteWaitStart) >= melody[melodyIndex][1]) {
+      if ((millis() - noteWaitStart) >= pgm_read_word(&melody[melodyIndex][1])) {
         melodyIndex++;
         seqNum++;   // Advance together with melodyIndex so keys stay in sync.
         retryCount   = 0;
