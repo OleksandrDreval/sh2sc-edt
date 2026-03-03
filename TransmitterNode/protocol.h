@@ -36,11 +36,12 @@ const uint8_t PACKET_TYPE_DATA  = 0x02; // Data frame       — carries an encry
 // Frame size constants
 const uint8_t HELLO_NONCE_SIZE   = 12u; // ChaChaPoly IV length (IETF 96-bit nonce)
 const uint8_t AUTH_TAG_SIZE      = 16u; // Poly1305 authentication tag length
-// Plaintext payload of a DATA packet:
+// Plaintext payload of a DATA packet (only the encrypted portion):
 //   [0] note_index       (1 byte)  — index into the receiver's frequency dictionary
 //   [1] duration_encoded (1 byte)  — duration in DURATION_UNIT_MS steps
-//   [2] seq_num          (1 byte)  — Stop-and-Wait sequence number (0 or 1)
-const uint8_t DATA_PAYLOAD_SIZE  = 3u;
+// NOTE: seq_num is in the open header (not encrypted) so both nodes can
+//       derive the per-packet nonce independently without decrypting first.
+const uint8_t DATA_PAYLOAD_SIZE  = 2u;
 
 
 // HELLO packet
