@@ -17,7 +17,7 @@
 #include <Arduino.h>
 
 // Total number of note / rest entries in the melody table.
-static const uint8_t MELODY_LENGTH = 530;
+static const uint16_t MELODY_LENGTH = 530;
 
 // melody[i][0] = note index,  melody[i][1] = duration (ms)
 static const uint16_t melody[MELODY_LENGTH][2] = {

@@ -28,7 +28,7 @@ static LiquidCrystal_AIP31068_I2C lcd(TX_LCD_ADDR, TX_LCD_COLS, TX_LCD_ROWS);
  
 
 static TxState  currentState  = TxState::IDLE;
-static uint8_t  melodyIndex   = 0;   // Current position within melody[][]
+static uint16_t melodyIndex   = 0;   // Current position within melody[][]
 static uint8_t  seqNum        = 0;   // Packet sequence number (0–255, wraps)
 static uint8_t  retryCount    = 0;   // Consecutive retransmission counter (shown on display)
 static uint32_t ackWaitStart  = 0;   // Timestamp (ms) when WAITING_ACK began
