@@ -388,13 +388,20 @@ void tx_loop() {
         // ENTROPY TEST (remove after validation)
         // Harvest the nonce at the exact microsecond of the button press so
         // human-timing jitter is maximally folded into the pool (Source 6).
-    //  const uint32_t testNonce = generateEntropyPool();
+    //  uint8_t seedBuf[32];
+    //  generateEntropyPool(seedBuf);
+    //  // Display first 4 bytes (word 0) as hex for quick visual check.
+    //  const uint32_t previewWord =
+    //      (static_cast<uint32_t>(seedBuf[3]) << 24u) |
+    //      (static_cast<uint32_t>(seedBuf[2]) << 16u) |
+    //      (static_cast<uint32_t>(seedBuf[1]) <<  8u) |
+    //       static_cast<uint32_t>(seedBuf[0]);
     //  lcd.clear();
     //  lcd.setCursor(0, 0);
     //  lcd.print("TX KEY:");
     //  lcd.setCursor(0, 1);
-    //  lcd.print(testNonce, HEX);  // e.g. "A3F1C72B"
-    //  delay(3000);                // Hold result on screen for 3 s
+    //  lcd.print(previewWord, HEX);  // e.g. "A3F1C72B"
+    //  delay(3000);                  // Hold result on screen for 3 s
         // END ENTROPY TEST
 
         currentState = TxState::SENDING;
