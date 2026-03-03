@@ -182,19 +182,6 @@ bool readButtonPress() {
 
  
 // PACKET HELPERS
- 
-
-uint8_t generateDynamicKey(uint8_t seqNumber) {
-  // LEGACY — kept as a dead stub so references in comments compile.
-  // The actual XOR cipher has been replaced by ChaCha20-Poly1305.
-  return SECRET_KEY ^ seqNumber;
-}
-
-uint8_t calculateChecksum(const uint8_t packet[PACKET_SIZE]) {
-  // LEGACY — kept as a dead stub so references in comments compile.
-  // Integrity is now guaranteed by the Poly1305 MAC tag in DataPacket.
-  return packet[0] ^ packet[1] ^ packet[2] ^ packet[3];
-}
 
 // sendHelloPacket — generate a fresh session nonce and broadcast it.
 //
