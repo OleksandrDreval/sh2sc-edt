@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include "protocol.h"
 #include "csprng.h"
+#include <ChaChaPoly.h>
 
  
 // TRANSMITTER (Node A) — "The Conductor"
@@ -37,23 +38,20 @@ void tx_loop();
 bool readButtonPress();
 
 // Packet construction helpers 
-// Generates the dynamic encryption key for the given sequence number.
-// Formula: K_dynamic = SECRET_KEY ^ seq_num
-uint8_t generateDynamicKey(uint8_t seqNum);
+// Generates a fresh 12-byte session nonce via CSPRNG, broadcasts it in a
+// HelloPacket, and stores the nonce internally for per-packet derivation.
+// Must be called ONCE on every button press, before any sendPacket() call.
+void sendHelloPacket();
 
-// Computes the XOR checksum over the first four packet bytes (AFTER encryption).
-// Formula: CHK = B0 ^ B1 ^ B2 ^ B3
-uint8_t calculateChecksum(const uint8_t packet[PACKET_SIZE]);
-
-// Low-level helper: encrypts both payload bytes, assembles the 5-byte frame
-// and transmits it. Called by formAndSendPacket and on retransmissions.
+// Derives the per-packet IV by copying the session nonce and XOR-ing the
+// last byte with seqNum, then runs the full ChaChaPoly pipeline:
+//   clear() → setKey(MASTER_PSK) → setIV(packetNonce) →
+//   addAuthData({packet_type, seqNum}) → encrypt(payload) → computeTag(mac)
 // noteDurationMs is in real milliseconds; encoding to packet units happens here.
 void sendPacket(uint8_t noteIndex, uint16_t noteDurationMs, uint8_t seqNum);
 
-// High-level send entry point used by the FSM SENDING state.
-// Takes raw (plain-text) note_idx and duration_ms (milliseconds), stores them as
-// the pending retransmit payload, then delegates to sendPacket().
-// The module-level seqNum is consumed automatically.
+// High-level entry point used by the FSM SENDING / WAITING_ACK states.
+// Snapshots the plain-text payload (for retransmit) then delegates to sendPacket().
 void formAndSendPacket(uint8_t note_idx, uint16_t duration_ms);
 
 // Display helper 

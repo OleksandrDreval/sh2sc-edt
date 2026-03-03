@@ -2,9 +2,11 @@
 // Flash this sketch onto the TX Arduino Nano.
 //
 // Responsibilities:
-//   - Read the start button (with millis-based debounce on D2).
+//   - Read the start button (with millis-based debounce on pin 3).
 //   - Walk through the Super Mario melody array packet by packet.
-//   - formAndSendPacket(): full crypto pipeline (key gen → encrypt → checksum → send).
+//   - sendHelloPacket(): generate CSPRNG nonce → broadcast HelloPacket.
+//   - sendPacket(): full ChaCha20-Poly1305 pipeline (nonce derivation →
+//     encrypt → authenticate → transmit 20-byte DataPacket).
 //   - Stop-and-Wait ARQ: after every SEND wait up to ACK_TIMEOUT_MS (50 ms) for ACK.
 //     ACK  → advance melody (melodyIndex++, seqNum++).
 //     NACK or timeout → retransmit the SAME packet with the SAME seqNum.
@@ -123,11 +125,17 @@ static LiquidCrystal_AIP31068_I2C lcd(TX_LCD_ADDR, TX_LCD_COLS, TX_LCD_ROWS);
  
 
 static TxState  currentState  = TxState::IDLE;
-static uint8_t  melodyIndex   = 0;   // Current position within noteIndices[]
+static uint8_t  melodyIndex   = 0;   // Current position within melody[][]
 static uint8_t  seqNum        = 0;   // Packet sequence number (0–255, wraps)
 static uint8_t  retryCount    = 0;   // Consecutive retransmission counter (shown on display)
-static uint8_t  lastChecksum  = 0;   // Checksum of the last sent packet (internal only)
 static uint32_t ackWaitStart  = 0;   // Timestamp (ms) when WAITING_ACK began
+
+// Session nonce — generated once per button press by sendHelloPacket().
+// Per-packet IV is derived as: packetNonce = sessionNonce, last byte ^= seqNum.
+static uint8_t  s_sessionNonce[HELLO_NONCE_SIZE];
+
+// ChaCha20-Poly1305 cipher instance (re-initialised per packet via clear()).
+static ChaChaPoly s_cipher;
 
 // Pending packet snapshot — allows retransmission without re-reading melody arrays.
 static uint8_t  pendingNoteIndex    = 0;
@@ -177,65 +185,101 @@ bool readButtonPress() {
  
 
 uint8_t generateDynamicKey(uint8_t seqNumber) {
-  // The key changes with every packet so two identically-pitched notes appear
-  // as different ciphertext bytes in the channel — replay-attack mitigation.
-  // K_dynamic = SECRET_KEY ^ seq_num
+  // LEGACY — kept as a dead stub so references in comments compile.
+  // The actual XOR cipher has been replaced by ChaCha20-Poly1305.
   return SECRET_KEY ^ seqNumber;
 }
 
 uint8_t calculateChecksum(const uint8_t packet[PACKET_SIZE]) {
-  // Checksum is computed AFTER encryption so it covers the full ciphertext
-  // frame, protecting it against bit-flip corruption in the noisy channel.
-  // CHK = B0 ^ B1 ^ B2 ^ B3
-  return packet[PACKET_IDX_START]
-       ^ packet[PACKET_IDX_NOTE]
-       ^ packet[PACKET_IDX_DURATION]
-       ^ packet[PACKET_IDX_SEQ];
+  // LEGACY — kept as a dead stub so references in comments compile.
+  // Integrity is now guaranteed by the Poly1305 MAC tag in DataPacket.
+  return packet[0] ^ packet[1] ^ packet[2] ^ packet[3];
+}
+
+// sendHelloPacket — generate a fresh session nonce and broadcast it.
+//
+// Called ONCE per button press (from FSM IDLE state) BEFORE any DataPacket
+// is sent.  Both nodes will use this nonce as the base for per-packet IV
+// derivation:
+//   packetNonce[i] = s_sessionNonce[i]
+//   packetNonce[11] ^= seqNum          // last byte encodes packet counter
+//
+// The nonce comes from getSecureRandom32() (ChaCha20 CSPRNG seeded at power-on
+// with 256-bit hardware entropy), so it is cryptographically unique per session.
+void sendHelloPacket() {
+  // Fill s_sessionNonce with 12 CSPRNG bytes (3 × 32-bit words).
+  for (uint8_t i = 0; i < HELLO_NONCE_SIZE; i += 4u) {
+    const uint32_t word = getSecureRandom32();
+    s_sessionNonce[i + 0u] = static_cast<uint8_t>(word);
+    s_sessionNonce[i + 1u] = static_cast<uint8_t>(word >>  8u);
+    s_sessionNonce[i + 2u] = static_cast<uint8_t>(word >> 16u);
+    s_sessionNonce[i + 3u] = static_cast<uint8_t>(word >> 24u);
+  }
+
+  HelloPacket hello;
+  hello.packet_type = PACKET_TYPE_HELLO;
+  memcpy(hello.nonce, s_sessionNonce, HELLO_NONCE_SIZE);
+  Serial.write(reinterpret_cast<const uint8_t*>(&hello), sizeof(HelloPacket));
 }
 
 void sendPacket(uint8_t noteIndex, uint16_t noteDurationMs, uint8_t seqNumber) {
-  uint8_t packet[PACKET_SIZE];
-  const uint8_t key = generateDynamicKey(seqNumber);
-
-  // Encode duration into one byte: 1 unit = DURATION_UNIT_MS ms.
-  // Capped at 255 to stay within uint8_t (covers up to 5 100 ms).
+  // Step 1 — Encode duration: 1 unit = DURATION_UNIT_MS ms, max 255 units.
   const uint8_t encodedDuration = static_cast<uint8_t>(
       min(static_cast<uint16_t>(255u),
           static_cast<uint16_t>(noteDurationMs / DURATION_UNIT_MS))
   );
 
-  // Step 1 — Assemble the frame with encrypted payload bytes.
-  // Both payload fields are XOR-encrypted: C = M ^ K_dynamic
-  packet[PACKET_IDX_START]    = START_MARKER;
-  packet[PACKET_IDX_NOTE]     = noteIndex       ^ key;
-  packet[PACKET_IDX_DURATION] = encodedDuration ^ key;
-  packet[PACKET_IDX_SEQ]      = seqNumber;
+  // Step 2 — Derive per-packet IV.
+  // Base: s_sessionNonce (12 bytes from HelloPacket).
+  // Modification: XOR the last byte with seqNumber so each packet
+  //   gets a unique (key, nonce) pair while remaining cheap to compute.
+  //   seqNum 0–255 guarantees no IV reuse within a single session.
+  uint8_t packetNonce[HELLO_NONCE_SIZE];
+  memcpy(packetNonce, s_sessionNonce, HELLO_NONCE_SIZE);
+  packetNonce[HELLO_NONCE_SIZE - 1u] ^= seqNumber;
 
-  // Step 2 — Compute checksum over the already-encrypted bytes.
-  packet[PACKET_IDX_CHECKSUM] = calculateChecksum(packet);
-  lastChecksum = packet[PACKET_IDX_CHECKSUM];
+  // Step 3 — Build the open header bytes that serve as AAD.
+  // Both packet_type and seq_num are authenticated but NOT encrypted:
+  //   • packet_type: tampering it from DATA→HELLO is detected.
+  //   • seq_num: tampering with it causes IV desync → MAC fails.
+  const uint8_t aad[2] = { PACKET_TYPE_DATA, seqNumber };
 
-  // Step 3 — Transmit all 5 bytes via hardware UART.
-  Serial.write(packet, PACKET_SIZE);
+  // Step 4 — Build plain-text payload (2 bytes).
+  const uint8_t plaintext[DATA_PAYLOAD_SIZE] = { noteIndex, encodedDuration };
+
+  // Step 5 — Run ChaCha20-Poly1305.
+  //   clear()         → resets cipher state (mandatory before reuse)
+  //   setKey()        → installs MASTER_PSK (256-bit PSK, never transmitted)
+  //   setIV()         → installs the per-packet 96-bit nonce
+  //   addAuthData()   → feeds the 2 AAD bytes into the Poly1305 MAC
+  //   encrypt()       → XORs plaintext with ChaCha20 keystream → ciphertext
+  //   computeTag()    → finalises the Poly1305 authentication tag (16 bytes)
+  DataPacket pkt;
+  pkt.packet_type = PACKET_TYPE_DATA;
+  pkt.seq_num     = seqNumber;
+
+  s_cipher.clear();
+  s_cipher.setKey(MASTER_PSK, 32u);
+  s_cipher.setIV(packetNonce, HELLO_NONCE_SIZE);
+  s_cipher.addAuthData(aad, sizeof(aad));
+  s_cipher.encrypt(pkt.payload, plaintext, DATA_PAYLOAD_SIZE);
+  s_cipher.computeTag(pkt.mac, AUTH_TAG_SIZE);
+
+  // Step 6 — Transmit 20 bytes over UART.
+  Serial.write(reinterpret_cast<const uint8_t*>(&pkt), sizeof(DataPacket));
 }
 
-// formAndSendPacket — high-level crypto pipeline entry point
+// formAndSendPacket — high-level entry point used by the FSM SENDING state.
 //
-// Workflow (matches the spec from 05_encryption_approach.instructions.md):
-//   1. Store plain-text payload as the pending retransmit snapshot.
-//   2. Generate K_dynamic = SECRET_KEY ^ seqNum  ← replay-attack mitigation.
-//   3. Encrypt: C_note = note_idx ^ K_dynamic
-//               C_dur  = duration_ms ^ K_dynamic
-//   4. Assemble 5-byte packet: [0xAA | C_note | C_dur | seqNum | CHK].
-//   5. Compute CHK = B0 ^ B1 ^ B2 ^ B3  (over ciphertext, not plaintext).
-//   6. Transmit via Serial.write().
+// Workflow:
+//   1. Snapshot the plain-text payload as the retransmit buffer.
+//   2. Delegate to sendPacket() which owns the full ChaChaPoly pipeline.
 void formAndSendPacket(uint8_t note_idx, uint16_t duration_ms) {
   // Snapshot the plain-text payload so the FSM can retransmit on NACK
   // without re-reading the melody arrays.
   pendingNoteIndex    = note_idx;
   pendingNoteDuration = duration_ms;
 
-  // Delegate to sendPacket which owns the full assemble+encrypt+send pipeline.
   sendPacket(note_idx, duration_ms, seqNum);
 }
 
@@ -394,6 +438,12 @@ void tx_loop() {
         melodyIndex = 0;
         seqNum      = 0;
         retryCount  = 0;  // Fresh start — reset the retry display counter.
+
+        // Handshake: generate a new session nonce and broadcast it to RX.
+        // RX will store this nonce and use it (combined with seqNum) to derive
+        // the per-packet IV for every subsequent DataPacket this session.
+        // sendHelloPacket() fills s_sessionNonce internally, then transmits it.
+        sendHelloPacket();
 
         // ENTROPY TEST (remove after validation)
         // Harvest the nonce at the exact microsecond of the button press so
