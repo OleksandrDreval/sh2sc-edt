@@ -390,6 +390,19 @@ void tx_loop() {
         melodyIndex = 0;
         seqNum      = 0;
         retryCount  = 0;  // Fresh start — reset the retry display counter.
+
+        // ENTROPY TEST (remove after validation)
+        // Harvest the nonce at the exact microsecond of the button press so
+        // human-timing jitter is maximally folded into the pool (Source 6).
+    //  const uint32_t testNonce = generateEntropyPool();
+    //  lcd.clear();
+    //  lcd.setCursor(0, 0);
+    //  lcd.print("TX KEY:");
+    //  lcd.setCursor(0, 1);
+    //  lcd.print(testNonce, HEX);  // e.g. "A3F1C72B"
+    //  delay(3000);                // Hold result on screen for 3 s
+        // END ENTROPY TEST
+
         currentState = TxState::SENDING;
         updateTxDisplay(currentState, seqNum, retryCount);
       }
