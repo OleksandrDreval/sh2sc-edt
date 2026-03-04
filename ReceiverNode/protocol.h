@@ -25,12 +25,19 @@ const uint8_t MASTER_PSK[32] = {
 };
 
 
-// Packet type identifiers
+// Frame flags (bitmask)
 //
-// Carried in the first byte of every frame so the receiver can
-// dispatch the correct handler without reading further bytes.
-const uint8_t PACKET_TYPE_HELLO = 0x01; // Handshake frame  — carries the session nonce
-const uint8_t PACKET_TYPE_DATA  = 0x02; // Data frame       — carries an encrypted note packet
+// The first byte of every frame is a flags field rather than a fixed type ID.
+// Using a bitmask allows future frames to combine roles (e.g. SYN|FIN for a
+// one-shot handshake) and lets the parser use bitwise-AND for matching,
+// which is more robust against single-bit noise corruption than strict equality.
+//
+//   FLAG_SYN  (0x01) — Session start: carries the 12-byte CSPRNG nonce.
+//   FLAG_DAT  (0x02) — Data frame: carries an encrypted note (index + duration).
+//   FLAG_FIN  (0x04) — Session end: instructs RX to close the current session.
+const uint8_t FLAG_SYN = 0x01;
+const uint8_t FLAG_DAT = 0x02;
+const uint8_t FLAG_FIN = 0x04;
 
 
 // Frame size constants
@@ -59,11 +66,11 @@ const uint8_t SYNC_BYTE_2 = 0x55;
 // if the plaintext repeats across sessions.
 //
 // Wire layout (13 bytes total):
-//   Byte  0     : packet_type (0x01)
+//   Byte  0     : flags (FLAG_SYN = 0x01)
 //   Bytes 1–12  : nonce[12]
 #pragma pack(push, 1)
 struct HelloPacket {
-  uint8_t packet_type;             // Always PACKET_TYPE_HELLO (0x01)
+  uint8_t flags;                   // FLAG_SYN (0x01) — identifies this as a handshake frame
   uint8_t nonce[HELLO_NONCE_SIZE]; // 96-bit session nonce for ChaChaPoly
 };
 #pragma pack(pop)
@@ -78,16 +85,16 @@ struct HelloPacket {
 // without first decrypting the payload.
 //
 // Wire layout (15 bytes, preceded by 2 sync bytes = 17 bytes on the wire):
-//   Byte  0     : packet_type (0x02)  ─┬─ AAD (3 bytes authenticated,
-//   Bytes 1–2   : seq_num (uint16_t)  ─┘     but NOT encrypted)
+//   Byte  0     : flags  (FLAG_DAT = 0x02) ─┬─ AAD (3 bytes authenticated,
+//   Bytes 1–2   : seq_num (uint16_t)        ─┘     but NOT encrypted)
 //   Bytes 3–6   : payload[2] uint16_t — ChaCha20 ciphertext (note_index, duration_ms)
 //   Bytes 7–14  : mac[8]              — first 8 bytes of Poly1305 tag
 //
-// Security property: any bit-flip in packet_type OR either seq_num byte causes
-// MAC verification to fail and the packet is discarded (NACK sent).
+// Security property: any bit-flip in the flags byte OR either seq_num byte
+// causes MAC verification to fail and the packet is discarded (NACK sent).
 #pragma pack(push, 1)
 struct DataPacket {
-  uint8_t  packet_type;               // Always PACKET_TYPE_DATA (0x02)  ─┬─ plaintext AAD
+  uint8_t  flags;                     // FLAG_DAT (0x02) ─┬─ plaintext AAD
   uint16_t seq_num;                   // 16-bit sequence number (little-endian) ─┘
   uint16_t payload[2];                // Encrypted: [note_index, duration_ms]
   uint8_t  mac[TRUNCATED_MAC_SIZE];   // First 8 bytes of Poly1305 tag
