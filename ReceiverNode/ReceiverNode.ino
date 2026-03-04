@@ -80,9 +80,16 @@ static uint16_t noteLengthMs = 0;    // How long the note should sound
 static bool     isPlayingNote = false;
 
 // Non-blocking MAC error display timer.
-const uint16_t  CHK_ERR_DISPLAY_MS = 500;
-static bool     isShowingError    = false;
-static uint32_t errorDisplayStart = 0;
+const uint16_t  CHK_ERR_DISPLAY_MS    = 500;
+static bool     isShowingError        = false;
+static uint32_t errorDisplayStart     = 0;
+
+// Parser timeout — if a packet body reception stalls longer than this,
+// the partial frame is discarded and the FSM is reset to WAITING_FOR_TYPE.
+// 20 ms >> one full 20-byte DataPacket at 9600 baud (~20 ms), so a legitimate
+// packet always completes well before the deadline.
+const uint16_t  RX_PARSER_TIMEOUT_MS = 20;
+static uint32_t rxLastByteMs         = 0;  // millis() of the last received byte
 
 // DISPLAY HELPER
 void updateRxDisplay(RxState state, uint8_t seqNum, bool macOk) {
@@ -106,6 +113,29 @@ void updateRxDisplay(RxState state, uint8_t seqNum, bool macOk) {
     lcd.print(seqNum);
     lcd.print(macOk ? " OK" : " MAC!");
   }
+}
+
+// SELF-HEALING HELPERS
+
+// resetParser — flush the hardware UART RX buffer and reset all FSM
+// state to a clean WAITING_FOR_TYPE baseline.
+//
+// When to call:
+//   1. MAC failure (checkTag() == false) — the buffer likely holds noise
+//      bytes from the same burst that corrupted the current packet.
+//   2. Parser timeout — a partial frame body was interrupted by a noise
+//      burst long enough to stall byte delivery for RX_PARSER_TIMEOUT_MS.
+//
+// The Serial.flush() variant only flushes TX; to drain RX we read-and-discard
+// every byte currently waiting in the 64-byte hardware FIFO.
+static void resetParser() {
+  // Drain any garbage in the 64-byte hardware UART RX FIFO.
+  while (Serial.available() > 0) {
+    Serial.read();
+  }
+  rx_bytesIn     = 0;
+  rx_bytesNeeded = 0;
+  currentState   = RxState::WAITING_FOR_TYPE;
 }
 
 // BYTE PROCESSOR — drives the FSM one byte at a time
@@ -225,6 +255,11 @@ void authenticateAndPlay() {
   // If the tag does not match: the packet was corrupted by noise or forged.
   // Under no circumstances may the note be played before this check passes.
   if (!s_cipher.checkTag(receivedMac, AUTH_TAG_SIZE)) {
+    // Flush UART buffer and reset FSM before sending NACK.
+    // This is the primary recovery point after a noise burst:
+    // the buffer likely holds more corrupted bytes from the same burst,
+    // and the parser must restart cleanly on the next valid packet_type byte.
+    resetParser();
     Serial.write(NACK_BYTE);  // Request retransmission.
     // Flash MAC error on LCD for CHK_ERR_DISPLAY_MS ms (non-blocking).
     lcd.clear();
@@ -431,9 +466,23 @@ void rx_loop() {
   }
 
   // Non-blocking UART reading.
+  // Track the timestamp of every received byte so the parser timeout can
+  // detect stalled mid-packet reception caused by a noise burst.
   while (Serial.available() > 0) {
     const uint8_t inByte = static_cast<uint8_t>(Serial.read());
+    rxLastByteMs = millis();  // Update last-byte timestamp for timeout guard.
     processReceivedByte(inByte);
+  }
+
+  // PARSER TIMEOUT — self-healing against mid-packet desync.
+  // If we are inside a frame body (rx_bytesNeeded > 0) but no new bytes
+  // have arrived for RX_PARSER_TIMEOUT_MS ms, the packet was torn apart
+  // by a noise burst.  Reset the FSM so the next valid type byte starts
+  // a fresh frame rather than being misinterpreted as body data.
+  if (rx_bytesNeeded > 0 &&
+      (millis() - rxLastByteMs) >= RX_PARSER_TIMEOUT_MS) {
+    resetParser();
+    updateRxDisplay(RxState::WAITING_FOR_TYPE, 0, false);
   }
 
   // GOT_HELLO — install session nonce and key, then resume listening.
