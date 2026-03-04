@@ -54,17 +54,20 @@ static LiquidCrystal_AIP31068_I2C lcd(RX_LCD_ADDR, RX_LCD_COLS, RX_LCD_ROWS);
 
 // RUNTIME STATE
 
-// Simple 4-state byte-level FSM — the only mechanism driving serial parsing.
-// WAIT_AA / WAIT_55 are the preamble scan for DATA frames.
-// READ_DATA / READ_HELLO collect raw bytes into rx_buffer then dispatch inline.
-enum ParseState : uint8_t { WAIT_AA, WAIT_55, READ_DATA, READ_HELLO };
+// 4-state byte-level FSM driving all serial parsing.
+// WAIT_AA / WAIT_55 — preamble scan; both HELLO and DATA must start with 0xAA 0x55,
+//   so no frame type can bypass the preamble gate.
+// READ_TYPE    — store the packet_type byte into rx_buffer[0] and set expected_length.
+// READ_PAYLOAD — collect (expected_length - 1) remaining bytes, then dispatch.
+enum ParseState : uint8_t { WAIT_AA, WAIT_55, READ_TYPE, READ_PAYLOAD };
 static ParseState parseState = WAIT_AA;
 
 // rx_buffer is sized to hold a full DataPacket (15 bytes).
-// When collecting a HelloPacket, only the first HELLO_NONCE_SIZE (12) bytes
-// are used.  Casting rx_buffer to DataPacket* gives zero-copy struct access.
+// HelloPacket (13 bytes) also fits.  rx_buffer[0] always holds packet_type.
+// Casting rx_buffer to the appropriate struct* gives zero-copy struct access.
 static uint8_t rx_buffer[sizeof(DataPacket)];
-static uint8_t rx_index = 0;   // How many bytes collected in the current frame
+static uint8_t rx_index       = 0;  // Bytes collected in the current frame
+static uint8_t expected_length = 0;  // Set in READ_TYPE; total bytes for this frame
 
 // Session state — set after a valid HelloPacket is processed.
 static bool     s_sessionActive = false;           // false until first HELLO received
@@ -146,63 +149,74 @@ static void resetParser() {
 void processReceivedByte(uint8_t inByte) {
   switch (parseState) {
 
-    // Preamble scan 
+    // Preamble scan
+    // ALL packet types (HELLO and DATA) are now prefixed with 0xAA 0x55.
+    // Nothing can enter the body-collection path without passing this gate.
 
     case WAIT_AA:
-      // HelloPacket has NO sync preamble: TX sends it as a raw struct starting
-      // directly with 0x01.  Intercept it here so it bypasses the preamble path.
-      if (inByte == PACKET_TYPE_HELLO) {
-        rx_index     = 0;
-        parseState   = READ_HELLO;
-        currentState = RxState::READING_HELLO;
-        updateRxDisplay(currentState, 0, false);
-      } else if (inByte == SYNC_BYTE_1) {
+      if (inByte == SYNC_BYTE_1) {
         parseState = WAIT_55;
       }
-      // Any other byte — channel noise, stay in WAIT_AA.
+      // Any other byte (including PACKET_TYPE_HELLO=0x01) — channel noise, stay.
       break;
 
     case WAIT_55:
       if (inByte == SYNC_BYTE_2) {
         rx_index   = 0;
-        parseState = READ_DATA;
-      } else if (inByte == SYNC_BYTE_1) {
-        // Could be the first byte of a new overlapping preamble — stay in WAIT_55.
-      } else {
-        parseState = WAIT_AA;  // Broken preamble, restart.
+        parseState = READ_TYPE;
+      } else if (inByte != SYNC_BYTE_1) {
+        // If a second 0xAA arrives stay in WAIT_55 (overlapping preambles);
+        // anything else means the preamble was corrupted — restart from WAIT_AA.
+        parseState = WAIT_AA;
       }
       break;
 
-    // Body collection 
+    // Packet-type discriminator
+    // Preamble confirmed.  The very next byte identifies the frame type and
+    // determines expected_length so READ_PAYLOAD knows when to stop.
 
-    case READ_HELLO:
-      // Collect HELLO_NONCE_SIZE nonce bytes; processHelloBody() reads rx_buffer[0..11].
-      rx_buffer[rx_index++] = inByte;
-      if (rx_index == HELLO_NONCE_SIZE) {
-        processHelloBody();
-        parseState   = WAIT_AA;
-        currentState = RxState::WAITING_SYNC_1;
+    case READ_TYPE:
+      rx_buffer[0] = inByte;  // packet_type lives at offset 0 for both structs
+      rx_index     = 1;
+      if (inByte == PACKET_TYPE_HELLO) {
+        expected_length = static_cast<uint8_t>(sizeof(HelloPacket));  // 13
+        parseState      = READ_PAYLOAD;
+        currentState    = RxState::READING_HELLO;
         updateRxDisplay(currentState, 0, false);
+      } else if (inByte == PACKET_TYPE_DATA) {
+        expected_length = static_cast<uint8_t>(sizeof(DataPacket));   // 15
+        parseState      = READ_PAYLOAD;
+        currentState    = RxState::READING_DATA;
+      } else {
+        // Unknown type — treat as noise, restart preamble scan immediately.
+        rx_index   = 0;
+        parseState = WAIT_AA;
       }
       break;
 
-    case READ_DATA: {
-      // Collect sizeof(DataPacket)=15 bytes: the struct is cast directly from the
-      // buffer, so byte order is guaranteed to match the packed TX struct exactly.
-      rx_buffer[rx_index++] = inByte;
-      if (rx_index == sizeof(DataPacket)) {
-        const DataPacket* pkt = reinterpret_cast<const DataPacket*>(rx_buffer);
+    // Body collection
+    // Accumulate bytes until the full frame is in rx_buffer, then dispatch.
+    // rx_buffer[0] = packet_type, rx_buffer[1..] = rest of the struct.
 
-        // Sanity check: first byte of the collected frame must be 0x02.
-        if (pkt->packet_type == PACKET_TYPE_DATA) {
+    case READ_PAYLOAD: {
+      rx_buffer[rx_index++] = inByte;
+      if (rx_index == expected_length) {
+        if (rx_buffer[0] == PACKET_TYPE_HELLO) {
+          // processHelloBody() reads nonce from rx_buffer[1..12].
+          processHelloBody();
+          currentState = RxState::WAITING_SYNC_1;
+          updateRxDisplay(currentState, 0, false);
+        } else {
+          // Cast the complete buffer to DataPacket* for zero-copy crypto access.
+          const DataPacket* pkt = reinterpret_cast<const DataPacket*>(rx_buffer);
           if (s_sessionActive) {
             authenticateAndPlay(pkt);
           } else {
-            // No session nonce yet — NACK and wait for a HELLO.
+            // No session key yet — reject and request a new HELLO.
             Serial.write(NACK_BYTE);
           }
         }
-        // Return to preamble scan regardless of outcome.
+        // Return to preamble scan regardless of the dispatch outcome.
         rx_index   = 0;
         parseState = WAIT_AA;
       }
@@ -222,8 +236,9 @@ void processReceivedByte(uint8_t inByte) {
 //
 // Calling convention: invoked directly from processReceivedByte() once HELLO nonce is complete.
 void processHelloBody() {
-  // rx_buffer[0..11] = nonce delivered inside the HelloPacket.
-  memcpy(s_sessionNonce, rx_buffer, HELLO_NONCE_SIZE);
+  // rx_buffer[0]     = packet_type (already validated as PACKET_TYPE_HELLO).
+  // rx_buffer[1..12] = 12-byte CSPRNG nonce from TX sendHelloPacket().
+  memcpy(s_sessionNonce, &rx_buffer[1], HELLO_NONCE_SIZE);
 
   // Pre-install the key so that per-packet handling only needs setIV().
   s_cipher.clear();
