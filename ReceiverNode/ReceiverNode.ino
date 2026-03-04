@@ -7,7 +7,7 @@
 //   - FSM: dispatch incoming bytes by packet_type (0x01 HELLO / 0x02 DATA).
 //   - processHelloBody(): store session nonce, install MASTER_PSK key.
 //   - authenticateAndPlay(): full ChaCha20-Poly1305 authenticated decryption;
-//       checkTag() == false → NACK (note NEVER played); true → ACK + tone().
+//       memcmp(expected_mac, received_mac, 8) != 0 → NACK (note NEVER played); 0 → ACK + tone().
 //   - Non-blocking buzzer timing via millis().
 
 #include "receiver.h"
@@ -54,18 +54,17 @@ static LiquidCrystal_AIP31068_I2C lcd(RX_LCD_ADDR, RX_LCD_COLS, RX_LCD_ROWS);
 
 // RUNTIME STATE
 
-static RxState currentState  = RxState::WAITING_FOR_TYPE;
+// Simple 4-state byte-level FSM — the only mechanism driving serial parsing.
+// WAIT_AA / WAIT_55 are the preamble scan for DATA frames.
+// READ_DATA / READ_HELLO collect raw bytes into rx_buffer then dispatch inline.
+enum ParseState : uint8_t { WAIT_AA, WAIT_55, READ_DATA, READ_HELLO };
+static ParseState parseState = WAIT_AA;
 
-// Receive buffer for the BODY of a packet (bytes after the packet_type byte).
-// Maximum body size: DataPacket body = seq_num(1) + payload(2) + mac(16) = 19 bytes.
-// HelloPacket body = nonce(12) bytes.  Buffer is sized for the larger case.
-static const uint8_t RX_BUF_SIZE = 1u + DATA_PAYLOAD_SIZE + AUTH_TAG_SIZE; // 19
-static uint8_t  rx_buffer[RX_BUF_SIZE];
-static uint8_t  rx_bytesNeeded = 0;   // Countdown: how many body bytes still needed
-static uint8_t  rx_bytesIn     = 0;   // How many body bytes collected so far
-
-// Packet type byte of the frame currently being assembled.
-static uint8_t  s_rxPacketType = 0;
+// rx_buffer is sized to hold a full DataPacket (15 bytes).
+// When collecting a HelloPacket, only the first HELLO_NONCE_SIZE (12) bytes
+// are used.  Casting rx_buffer to DataPacket* gives zero-copy struct access.
+static uint8_t rx_buffer[sizeof(DataPacket)];
+static uint8_t rx_index = 0;   // How many bytes collected in the current frame
 
 // Session state — set after a valid HelloPacket is processed.
 static bool     s_sessionActive = false;           // false until first HELLO received
@@ -84,20 +83,23 @@ const uint16_t  CHK_ERR_DISPLAY_MS    = 500;
 static bool     isShowingError        = false;
 static uint32_t errorDisplayStart     = 0;
 
-// Parser timeout — if a packet body reception stalls longer than this,
-// the partial frame is discarded and the FSM is reset to WAITING_FOR_TYPE.
-// 20 ms >> one full 20-byte DataPacket at 9600 baud (~20 ms), so a legitimate
-// packet always completes well before the deadline.
+// Parser timeout: if collection stalls for RX_PARSER_TIMEOUT_MS without a new
+// byte, the partial frame is dropped and preamble scan restarts.
 const uint16_t  RX_PARSER_TIMEOUT_MS = 20;
-static uint32_t rxLastByteMs         = 0;  // millis() of the last received byte
+static uint32_t rxLastByteMs         = 0;
+
+// Display state (for LCD only — independent of the parser FSM).
+static RxState currentState = RxState::WAITING_SYNC_1;
 
 // DISPLAY HELPER
-void updateRxDisplay(RxState state, uint8_t seqNum, bool macOk) {
+void updateRxDisplay(RxState state, uint16_t seqNum, bool macOk) {
   lcd.clear();
 
   // Row 0: FSM state label
   lcd.setCursor(0, 0);
   switch (state) {
+    case RxState::WAITING_SYNC_1:   lcd.print("WAIT SYNC");  break;
+    case RxState::WAITING_SYNC_2:   lcd.print("WAIT SYNC2"); break;
     case RxState::WAITING_FOR_TYPE: lcd.print(s_sessionActive ? "READY" : "NO KEY"); break;
     case RxState::READING_HELLO:    lcd.print("HANDSHAKE");  break;
     case RxState::READING_DATA:     lcd.print("READING..."); break;
@@ -118,10 +120,10 @@ void updateRxDisplay(RxState state, uint8_t seqNum, bool macOk) {
 // SELF-HEALING HELPERS
 
 // resetParser — flush the hardware UART RX buffer and reset all FSM
-// state to a clean WAITING_FOR_TYPE baseline.
+// state to a clean WAITING_SYNC_1 baseline.
 //
 // When to call:
-//   1. MAC failure (checkTag() == false) — the buffer likely holds noise
+//   1. MAC failure (memcmp of truncated tag ≠ 0) — the buffer likely holds noise
 //      bytes from the same burst that corrupted the current packet.
 //   2. Parser timeout — a partial frame body was interrupted by a noise
 //      burst long enough to stall byte delivery for RX_PARSER_TIMEOUT_MS.
@@ -133,59 +135,79 @@ static void resetParser() {
   while (Serial.available() > 0) {
     Serial.read();
   }
-  rx_bytesIn     = 0;
-  rx_bytesNeeded = 0;
-  currentState   = RxState::WAITING_FOR_TYPE;
+  rx_index     = 0;
+  parseState   = WAIT_AA;
+  currentState = RxState::WAITING_SYNC_1;
 }
 
-// BYTE PROCESSOR — drives the FSM one byte at a time
-// Called from rx_loop() for every byte that arrives on the serial port.
-// Non-blocking by design: only processes bytes already in the HW UART buffer.
+// BYTE PROCESSOR — drives the parser FSM one byte at a time.
+// All processing (crypto, note playback) happens inline here — rx_loop()
+// only needs to check note-timer and error-display expiry.
 void processReceivedByte(uint8_t inByte) {
-  switch (currentState) {
+  switch (parseState) {
 
-    case RxState::WAITING_FOR_TYPE:
-      // The very first byte of any frame is the packet_type discriminator.
-      // All other bytes at this stage are channel noise — silently discard.
+    // Preamble scan 
+
+    case WAIT_AA:
+      // HelloPacket has NO sync preamble: TX sends it as a raw struct starting
+      // directly with 0x01.  Intercept it here so it bypasses the preamble path.
       if (inByte == PACKET_TYPE_HELLO) {
-        s_rxPacketType = PACKET_TYPE_HELLO;
-        rx_bytesNeeded = HELLO_NONCE_SIZE;  // 12 nonce bytes to follow
-        rx_bytesIn     = 0;
-        currentState   = RxState::READING_HELLO;
+        rx_index     = 0;
+        parseState   = READ_HELLO;
+        currentState = RxState::READING_HELLO;
         updateRxDisplay(currentState, 0, false);
-      } else if (inByte == PACKET_TYPE_DATA) {
-        // Gate DATA packets on session readiness: refuse if no HELLO seen yet.
-        if (!s_sessionActive) {
-          // Cannot authenticate without a session nonce — send NACK and wait.
-          Serial.write(NACK_BYTE);
-          break;
+      } else if (inByte == SYNC_BYTE_1) {
+        parseState = WAIT_55;
+      }
+      // Any other byte — channel noise, stay in WAIT_AA.
+      break;
+
+    case WAIT_55:
+      if (inByte == SYNC_BYTE_2) {
+        rx_index   = 0;
+        parseState = READ_DATA;
+      } else if (inByte == SYNC_BYTE_1) {
+        // Could be the first byte of a new overlapping preamble — stay in WAIT_55.
+      } else {
+        parseState = WAIT_AA;  // Broken preamble, restart.
+      }
+      break;
+
+    // Body collection 
+
+    case READ_HELLO:
+      // Collect HELLO_NONCE_SIZE nonce bytes; processHelloBody() reads rx_buffer[0..11].
+      rx_buffer[rx_index++] = inByte;
+      if (rx_index == HELLO_NONCE_SIZE) {
+        processHelloBody();
+        parseState   = WAIT_AA;
+        currentState = RxState::WAITING_SYNC_1;
+        updateRxDisplay(currentState, 0, false);
+      }
+      break;
+
+    case READ_DATA: {
+      // Collect sizeof(DataPacket)=15 bytes: the struct is cast directly from the
+      // buffer, so byte order is guaranteed to match the packed TX struct exactly.
+      rx_buffer[rx_index++] = inByte;
+      if (rx_index == sizeof(DataPacket)) {
+        const DataPacket* pkt = reinterpret_cast<const DataPacket*>(rx_buffer);
+
+        // Sanity check: first byte of the collected frame must be 0x02.
+        if (pkt->packet_type == PACKET_TYPE_DATA) {
+          if (s_sessionActive) {
+            authenticateAndPlay(pkt);
+          } else {
+            // No session nonce yet — NACK and wait for a HELLO.
+            Serial.write(NACK_BYTE);
+          }
         }
-        s_rxPacketType = PACKET_TYPE_DATA;
-        // Body layout: seq_num(1) + payload[2] + mac[16] = 19 bytes total.
-        rx_bytesNeeded = 1u + DATA_PAYLOAD_SIZE + AUTH_TAG_SIZE;
-        rx_bytesIn     = 0;
-        currentState   = RxState::READING_DATA;
-      }
-      // Any other first byte is noise — remain in WAITING_FOR_TYPE.
-      break;
-
-    case RxState::READING_HELLO:
-      rx_buffer[rx_bytesIn++] = inByte;
-      if (rx_bytesIn == rx_bytesNeeded) {
-        currentState = RxState::GOT_HELLO;
+        // Return to preamble scan regardless of outcome.
+        rx_index   = 0;
+        parseState = WAIT_AA;
       }
       break;
-
-    case RxState::READING_DATA:
-      rx_buffer[rx_bytesIn++] = inByte;
-      if (rx_bytesIn == rx_bytesNeeded) {
-        currentState = RxState::GOT_DATA;
-      }
-      break;
-
-    // GOT_HELLO, GOT_DATA and EXECUTING_ACTION are resolved in rx_loop().
-    default:
-      break;
+    }
   }
 }
 
@@ -198,7 +220,7 @@ void processReceivedByte(uint8_t inByte) {
 //   • MASTER_PSK is installed in s_cipher (setKey only — no IV yet).
 //   • s_sessionActive = true — DATA packets will now be accepted.
 //
-// Calling convention: invoke from rx_loop() exactly once per GOT_HELLO event.
+// Calling convention: invoked directly from processReceivedByte() once HELLO nonce is complete.
 void processHelloBody() {
   // rx_buffer[0..11] = nonce delivered inside the HelloPacket.
   memcpy(s_sessionNonce, rx_buffer, HELLO_NONCE_SIZE);
@@ -210,32 +232,31 @@ void processHelloBody() {
   s_sessionActive = true;
 }
 
-// authenticateAndPlay — full ChaCha20-Poly1305 RX pipeline.
+// authenticateAndPlay — full ChaCha20-Poly1305 v2 RX pipeline.
 //
-// rx_buffer layout (set by processReceivedByte in READING_DATA state):
-//   rx_buffer[0]          — seq_num   (open header; part of AAD)
-//   rx_buffer[1..2]       — payload[2] (ChaCha20 ciphertext: note, duration)
-//   rx_buffer[3..18]      — mac[16]   (Poly1305 authentication tag)
+// Receives a pointer to the DataPacket cast directly from rx_buffer.
+// Using the packed struct eliminates all manual byte-offset arithmetic and
+// ensures byte order matches the TX-side struct exactly (#pragma pack(push, 1)).
 //
-// Security invariant: startNote() is called ONLY after checkTag() returns true.
-// A false tag means the frame was corrupted or forged; NACK is sent, no sound.
-void authenticateAndPlay() {
-  const uint8_t seqNum          = rx_buffer[0];
-  const uint8_t* ciphertext     = &rx_buffer[1];
-  const uint8_t* receivedMac    = &rx_buffer[1u + DATA_PAYLOAD_SIZE]; // &rx_buffer[3]
+// Security invariant: startNote() is called ONLY after MAC verification passes.
+void authenticateAndPlay(const DataPacket* pkt) {
+  const uint16_t seqNum = pkt->seq_num;  // Direct struct field — no manual shift/OR
 
-  // Step 1 — Derive the per-packet IV.
-  // Base: s_sessionNonce (12 bytes received in HelloPacket).
-  // Modification: XOR the last byte with seqNum.
-  // This mirrors the TX derivation exactly; both sides get the same IV
-  // from only the public seqNum and the shared secret session nonce.
+  // Step 1 — Derive per-packet nonce via memcpy to protect the shared s_sessionNonce.
+  // NEVER XOR directly into s_sessionNonce: that would corrupt every subsequent
+  // packet's IV derivation.  Use a local copy as the TX side does.
   uint8_t packetNonce[HELLO_NONCE_SIZE];
   memcpy(packetNonce, s_sessionNonce, HELLO_NONCE_SIZE);
-  packetNonce[HELLO_NONCE_SIZE - 1u] ^= seqNum;
+  packetNonce[10] ^= static_cast<uint8_t>((seqNum >> 8u) & 0xFFu);
+  packetNonce[11] ^= static_cast<uint8_t>(seqNum         & 0xFFu);
 
-  // Step 2 — AAD: the two open (unauthenticated-but-bound) header bytes.
-  // Any tampering with packet_type or seq_num will cause checkTag() to fail.
-  const uint8_t aad[2] = { PACKET_TYPE_DATA, seqNum };
+  // Step 2 — 3-byte AAD: packet_type + both bytes of seq_num.
+  // Must match the TX construction in sendPacket() byte-for-byte.
+  const uint8_t aad[3] = {
+    PACKET_TYPE_DATA,
+    static_cast<uint8_t>(seqNum         & 0xFFu),  // seq_num low byte
+    static_cast<uint8_t>((seqNum >> 8u) & 0xFFu)   // seq_num high byte
+  };
 
   // Step 3 — Configure cipher for this specific packet.
   s_cipher.clear();
@@ -243,25 +264,26 @@ void authenticateAndPlay() {
   s_cipher.setIV(packetNonce, HELLO_NONCE_SIZE);
   s_cipher.addAuthData(aad, sizeof(aad));
 
-  // Step 4 — Decrypt payload (2 bytes: note_index, duration_encoded).
-  // decrypt() XORs ciphertext with the ChaCha20 keystream AND feeds the
-  // ciphertext into the Poly1305 state — both operations happen in one pass.
-  uint8_t plaintext[DATA_PAYLOAD_SIZE];
-  s_cipher.decrypt(plaintext, ciphertext, DATA_PAYLOAD_SIZE);
+  // Step 4 — Decrypt 4-byte payload (uint16_t[2]) in one pass.
+  // decrypt() feeds ciphertext into Poly1305 AND XORs with keystream simultaneously.
+  uint16_t plaintext[2];  // [0]=note_index, [1]=duration_ms
+  s_cipher.decrypt(
+    reinterpret_cast<uint8_t*>(plaintext),
+    reinterpret_cast<const uint8_t*>(pkt->payload),
+    DATA_PAYLOAD_SIZE
+  );
 
-  // CRITICAL Step 5 — Verify the Poly1305 authentication tag.
-  // checkTag() compares the internally computed tag against the received one
-  // in constant time to prevent timing side-channels.
-  // If the tag does not match: the packet was corrupted by noise or forged.
-  // Under no circumstances may the note be played before this check passes.
-  if (!s_cipher.checkTag(receivedMac, AUTH_TAG_SIZE)) {
-    // Flush UART buffer and reset FSM before sending NACK.
-    // This is the primary recovery point after a noise burst:
-    // the buffer likely holds more corrupted bytes from the same burst,
-    // and the parser must restart cleanly on the next valid packet_type byte.
+  // CRITICAL Step 5 — Verify truncated (8-byte) Poly1305 MAC.
+  // computeTag() + memcmp() replaces checkTag() because the library's
+  // checkTag() requires the full 16-byte tag, not our 8-byte truncated one.
+  uint8_t expectedMac[16];
+  s_cipher.computeTag(expectedMac, 16u);
+
+  if (memcmp(expectedMac, pkt->mac, TRUNCATED_MAC_SIZE) != 0) {
+    // MAC mismatch: noise corruption or forgery.
+    // Flush UART FIFO — burst that corrupted this packet likely left more garbage.
     resetParser();
-    Serial.write(NACK_BYTE);  // Request retransmission.
-    // Flash MAC error on LCD for CHK_ERR_DISPLAY_MS ms (non-blocking).
+    Serial.write(NACK_BYTE);
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print("MAC FAIL! NACK");
@@ -270,27 +292,27 @@ void authenticateAndPlay() {
     lcd.print(seqNum);
     errorDisplayStart = millis();
     isShowingError    = true;
-    return; // Discard — do NOT proceed to tone playback.
+    return;  // Discard — do NOT play any note.
   }
 
-  // Step 6 — Authentication PASSED.  Send ACK before playing.
+  // Step 6 — Authentication PASSED. Send ACK.
   Serial.write(ACK_BYTE);
 
-  // Step 7 — Decode plain-text fields.
-  const uint8_t  noteIndex       = plaintext[0];
-  const uint8_t  durationEncoded = plaintext[1];
-  const uint16_t durationMs      = static_cast<uint16_t>(durationEncoded) * DURATION_UNIT_MS;
+  // Step 7 — Extract decoded fields.
+  // payload fields are uint16_t; duration is direct milliseconds (no scaling).
+  const uint16_t noteIndex  = plaintext[0];
+  const uint16_t durationMs = plaintext[1];
 
-  // Step 8 — Handle REST (silence) vs. audible note.
+  // Step 8 — Play note or REST.
   if (noteIndex == REST_INDEX) {
-    stopNote();  // Ensure buzzer is silenced for the duration of the rest.
+    stopNote();
   } else if (noteIndex < NOTE_DICT_SIZE) {
     startNote(universal_notes[noteIndex], durationMs);
   }
-  // If noteIndex is out of range but MAC was valid (should never happen with
-  // a cooperative TX), silently skip to avoid undefined behaviour on the array.
+  // noteIndex out of range with a valid MAC: ignore (should never happen).
 
-  updateRxDisplay(RxState::EXECUTING_ACTION, seqNum, true);
+  currentState = RxState::EXECUTING_ACTION;
+  updateRxDisplay(currentState, seqNum, true);
 }
 
 // BUZZER HELPERS
@@ -408,10 +430,10 @@ void rx_setup() {
   lcd.init();
   // lcd.backlight();
 
-  // Reset FSM and buffer.
-  currentState   = RxState::WAITING_FOR_TYPE;
-  rx_bytesIn     = 0;
-  rx_bytesNeeded = 0;
+  // Reset parser and buffer — start at sync preamble acquisition.
+  parseState   = WAIT_AA;
+  rx_index     = 0;
+  currentState = RxState::WAITING_SYNC_1;
 
   updateRxDisplay(currentState, 0, false);
 
@@ -452,73 +474,35 @@ void rx_loop() {
   // MAC error-flash expiry: restore normal display after CHK_ERR_DISPLAY_MS ms.
   if (isShowingError && ((millis() - errorDisplayStart) >= CHK_ERR_DISPLAY_MS)) {
     isShowingError = false;
-    updateRxDisplay(RxState::WAITING_FOR_TYPE, 0, false);
+    updateRxDisplay(RxState::WAITING_SYNC_1, 0, false);
   }
 
   // Non-blocking note duration management.
   if (isPlayingNote && ((millis() - noteStartMs) >= noteLengthMs)) {
     stopNote();
-    // Return to idle once the note has finished sounding.
     if (currentState == RxState::EXECUTING_ACTION) {
-      currentState = RxState::WAITING_FOR_TYPE;
+      currentState = RxState::WAITING_SYNC_1;
       updateRxDisplay(currentState, 0, false);
     }
   }
 
   // Non-blocking UART reading.
-  // Track the timestamp of every received byte so the parser timeout can
-  // detect stalled mid-packet reception caused by a noise burst.
+  // processReceivedByte() handles all parsing, crypto, and playback inline;
+  // rx_loop() only needs to run the timer callbacks above.
   while (Serial.available() > 0) {
     const uint8_t inByte = static_cast<uint8_t>(Serial.read());
-    rxLastByteMs = millis();  // Update last-byte timestamp for timeout guard.
+    rxLastByteMs = millis();
     processReceivedByte(inByte);
   }
 
   // PARSER TIMEOUT — self-healing against mid-packet desync.
-  // If we are inside a frame body (rx_bytesNeeded > 0) but no new bytes
-  // have arrived for RX_PARSER_TIMEOUT_MS ms, the packet was torn apart
-  // by a noise burst.  Reset the FSM so the next valid type byte starts
-  // a fresh frame rather than being misinterpreted as body data.
-  if (rx_bytesNeeded > 0 &&
+  // If bytes are being collected (rx_index > 0) but no new byte has arrived
+  // for RX_PARSER_TIMEOUT_MS ms, the frame was torn apart by a noise burst.
+  // Reset so the next 0xAA 0x55 preamble starts a fresh frame.
+  if (rx_index > 0 && parseState != WAIT_AA &&
       (millis() - rxLastByteMs) >= RX_PARSER_TIMEOUT_MS) {
     resetParser();
-    updateRxDisplay(RxState::WAITING_FOR_TYPE, 0, false);
-  }
-
-  // GOT_HELLO — install session nonce and key, then resume listening.
-  if (currentState == RxState::GOT_HELLO) {
-    currentState = RxState::GOT_HELLO;  // keep for display
-    updateRxDisplay(RxState::GOT_HELLO, 0, false);
-
-    processHelloBody();
-
-    // Reset buffer and return to top-level dispatch.
-    rx_bytesIn     = 0;
-    rx_bytesNeeded = 0;
-    currentState   = RxState::WAITING_FOR_TYPE;
-    updateRxDisplay(currentState, 0, false);
-  }
-
-  // GOT_DATA — authenticate + decrypt + play (or NACK on MAC failure).
-  //
-  // FSM path SUCCESS: GOT_DATA → EXECUTING_ACTION → WAITING_FOR_TYPE (after note)
-  // FSM path FAILURE: GOT_DATA → WAITING_FOR_TYPE  (immediately, NACK sent)
-  if (currentState == RxState::GOT_DATA) {
-    authenticateAndPlay();
-    // authenticateAndPlay() either:
-    //   a) called startNote() + updateRxDisplay(EXECUTING_ACTION) → state stays until note ends
-    //   b) sent NACK and returned early → we must reset to WAITING_FOR_TYPE here
-    if (!isPlayingNote) {
-      // Auth failed (NACK path) or it was a REST — reset immediately.
-      rx_bytesIn     = 0;
-      rx_bytesNeeded = 0;
-      currentState   = RxState::WAITING_FOR_TYPE;
-    } else {
-      // Auth succeeded — stay in EXECUTING_ACTION until note finishes.
-      currentState = RxState::EXECUTING_ACTION;
-      rx_bytesIn     = 0;
-      rx_bytesNeeded = 0;
-    }
+    updateRxDisplay(RxState::WAITING_SYNC_1, 0, false);
   }
 }
 

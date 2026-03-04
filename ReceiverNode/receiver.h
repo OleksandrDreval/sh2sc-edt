@@ -28,9 +28,11 @@ const uint8_t RX_LCD_ROWS   = 2;
 // Finite State Machine states 
 // The entire RX logic is driven by this FSM; no blocking delays allowed.
 enum class RxState : uint8_t {
-  WAITING_FOR_TYPE,   // Idle — waiting for the first byte of any packet (packet_type)
+  WAITING_SYNC_1,     // Initial/reset state — waiting for SYNC_BYTE_1 (0xAA)
+  WAITING_SYNC_2,     // SYNC_BYTE_1 seen — waiting for SYNC_BYTE_2 (0x55)
+  WAITING_FOR_TYPE,   // Sync preamble confirmed — waiting for packet_type byte
   READING_HELLO,      // Collecting the 12-byte nonce body of a HelloPacket
-  READING_DATA,       // Collecting the 19-byte body of a DataPacket
+  READING_DATA,       // Collecting the 14-byte body (seq+payload+mac) of a DataPacket
   GOT_HELLO,          // Full HelloPacket buffered; resolved in rx_loop()
   GOT_DATA,           // Full DataPacket buffered; resolved in rx_loop()
   EXECUTING_ACTION    // MAC verified; note is sounding (non-blocking wait)
@@ -49,14 +51,16 @@ void processReceivedByte(uint8_t inByte);
 // Copies the buffered nonce into s_sessionNonce and installs MASTER_PSK.
 void processHelloBody();
 
-// DATA handler — called from rx_loop() when GOT_DATA is set.
-// Full ChaCha20-Poly1305 pipeline:
-//   1. Derive packetNonce = s_sessionNonce, last byte ^= rx_buffer[0] (seq_num).
-//   2. clear() → setKey(MASTER_PSK) → setIV(packetNonce).
-//   3. addAuthData({packet_type, seq_num}).
-//   4. decrypt(payload, 2 bytes).
-//   5. checkTag(mac, 16) — CRITICAL: if false → NACK, discard; if true → ACK.
-void authenticateAndPlay();
+// DATA handler — called directly from processReceivedByte() when READ_DATA buffer is full.
+// Full ChaCha20-Poly1305 v2 pipeline:
+//   1. Read seq_num directly from pkt->seq_num (uint16_t, packed struct).
+//   2. Derive nonce: local copy of s_sessionNonce, bytes[10]^=(seq>>8), bytes[11]^=(seq&0xFF).
+//   3. clear() → setKey(MASTER_PSK) → setIV(packetNonce).
+//   4. addAuthData({packet_type, seq_lo, seq_hi}) — 3-byte AAD.
+//   5. decrypt(pkt->payload, DATA_PAYLOAD_SIZE=4 bytes).
+//   6. computeTag(expected, 16) then memcmp(expected, pkt->mac, TRUNCATED_MAC_SIZE=8).
+//   CRITICAL: startNote() is called ONLY after memcmp returns 0.
+void authenticateAndPlay(const DataPacket* pkt);
 
 // Starts playing a note at the given frequency for durationMs milliseconds.
 // Non-blocking: records the start time and relies on millis() for stop logic.
@@ -68,7 +72,7 @@ void stopNote();
 // Display helper 
 // Updates the I2C LCD with current FSM state and last received sequence number
 // without blocking the main loop.
-void updateRxDisplay(RxState state, uint8_t seqNum, bool macOk);
+void updateRxDisplay(RxState state, uint16_t seqNum, bool macOk);
 
 // Entropy pool generator (RX variant) 
 // Fills outputSeed[32] with 256 bits of harvested hardware entropy.
