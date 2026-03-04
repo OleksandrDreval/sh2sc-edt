@@ -218,8 +218,8 @@ void processReceivedByte(uint8_t inByte) {
           processHelloBody();
           currentState = RxState::WAITING_SYNC_1;
           updateRxDisplay(currentState, 0, false);
-        } else {
-          // Cast the complete buffer to DataPacket* for zero-copy crypto access.
+        } else if (rx_buffer[0] & FLAG_DAT) {
+          // DAT frame — authenticate and play the note.
           const DataPacket* pkt = reinterpret_cast<const DataPacket*>(rx_buffer);
           if (s_sessionActive) {
             authenticateAndPlay(pkt);
@@ -227,6 +227,18 @@ void processReceivedByte(uint8_t inByte) {
             // No session key yet — reject and request a new HELLO.
             Serial.write(NACK_BYTE);
           }
+        } else if (rx_buffer[0] & FLAG_FIN) {
+          // FIN frame — verify MAC, send ACK, erase session key.
+          const DataPacket* pkt = reinterpret_cast<const DataPacket*>(rx_buffer);
+          if (s_sessionActive) {
+            processFinPacket(pkt);
+          } else {
+            // No active session — nothing to tear down, reset silently.
+            resetParser();
+          }
+        } else {
+          // No recognised flag — should not reach here; noise guard.
+          resetParser();
         }
         // Return to preamble scan regardless of the dispatch outcome.
         rx_index   = 0;
@@ -343,7 +355,83 @@ void authenticateAndPlay(const DataPacket* pkt) {
   updateRxDisplay(currentState, seqNum, true);
 }
 
-// BUZZER HELPERS
+// processFinPacket — authenticate and process a FLAG_FIN session-teardown packet.
+//
+// Cryptographic pipeline is identical to authenticateAndPlay() to guarantee
+// that only the legitimate TX (with knowledge of MASTER_PSK and s_sessionNonce)
+// can produce a verifiable FIN.  A noise-generated FLAG_FIN byte will always
+// fail MAC verification and trigger NACK without touching the session state.
+//
+// On MAC success: ACK sent, LCD updated, s_sessionNonce zeroed, parser reset.
+// On MAC failure: NACK sent, LCD shows error, parser reset.
+void processFinPacket(const DataPacket* pkt) {
+  const uint16_t seqNum = pkt->seq_num;
+
+  // Step 1 — Derive per-packet nonce (same derivation as TX sendFinPacket()).
+  uint8_t packetNonce[HELLO_NONCE_SIZE];
+  memcpy(packetNonce, s_sessionNonce, HELLO_NONCE_SIZE);
+  packetNonce[10] ^= static_cast<uint8_t>((seqNum >> 8u) & 0xFFu);
+  packetNonce[11] ^= static_cast<uint8_t>(seqNum         & 0xFFu);
+
+  // Step 2 — 3-byte AAD: FLAG_FIN + seq_num bytes.
+  // Must match TX sendFinPacket() byte-for-byte; any mismatch fails MAC.
+  const uint8_t aad[3] = {
+    FLAG_FIN,
+    static_cast<uint8_t>(seqNum         & 0xFFu),
+    static_cast<uint8_t>((seqNum >> 8u) & 0xFFu)
+  };
+
+  // Step 3 — Configure cipher.
+  s_cipher.clear();
+  s_cipher.setKey(MASTER_PSK, 32u);
+  s_cipher.setIV(packetNonce, HELLO_NONCE_SIZE);
+  s_cipher.addAuthData(aad, sizeof(aad));
+
+  // Step 4 — Decrypt 4-byte payload into a local discard buffer.
+  // TX encrypts zeros; we decrypt to feed the Poly1305 state correctly.
+  uint8_t discardBuf[DATA_PAYLOAD_SIZE];
+  s_cipher.decrypt(
+    discardBuf,
+    reinterpret_cast<const uint8_t*>(pkt->payload),
+    DATA_PAYLOAD_SIZE
+  );
+
+  // Step 5 — Verify truncated (8-byte) MAC.
+  uint8_t expectedMac[16];
+  s_cipher.computeTag(expectedMac, 16u);
+
+  if (memcmp(expectedMac, pkt->mac, TRUNCATED_MAC_SIZE) != 0) {
+    // MAC mismatch — noise or injection; do NOT close the session.
+    Serial.write(NACK_BYTE);
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("FIN MAC FAIL!");
+    lcd.setCursor(0, 1);
+    lcd.print("NACK sent");
+    resetParser();
+    return;
+  }
+
+  // Step 6 — Authentication passed; confirm to TX.
+  Serial.write(ACK_BYTE);
+
+  // Step 7 — Display session-closed message for the operator.
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("SESSION CLOSED");
+  lcd.setCursor(0, 1);
+  lcd.print("SEQ:");
+  lcd.print(seqNum);
+
+  // Step 8 — CRITICAL: erase the session nonce from RAM.
+  // With the nonce gone, no future packet can be decrypted even if
+  // an attacker replays captured ciphertext or triggers a reset.
+  memset(s_sessionNonce, 0, HELLO_NONCE_SIZE);
+  s_sessionActive = false;
+
+  // Step 9 — Return parser to clean idle state, ready for the next SYN.
+  resetParser();
+}
 
 // startNote — begins buzzer output; non-blocking.
 // tone() configures the PWM hardware and returns immediately.
