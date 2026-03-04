@@ -157,7 +157,7 @@ void processReceivedByte(uint8_t inByte) {
       if (inByte == SYNC_BYTE_1) {
         parseState = WAIT_55;
       }
-      // Any other byte (including PACKET_TYPE_HELLO=0x01) — channel noise, stay.
+      // Any other byte (including FLAG_SYN=0x01 without preamble) — channel noise, stay.
       break;
 
     case WAIT_55:
@@ -176,19 +176,31 @@ void processReceivedByte(uint8_t inByte) {
     // determines expected_length so READ_PAYLOAD knows when to stop.
 
     case READ_TYPE:
-      rx_buffer[0] = inByte;  // packet_type lives at offset 0 for both structs
+      // Store the flags byte at offset 0 — it is the first field of both structs.
+      // Use bitwise-AND (not ==) for matching: this tolerates future multi-flag
+      // combinations and is slightly more noise-resilient than strict equality.
+      rx_buffer[0] = inByte;
       rx_index     = 1;
-      if (inByte == PACKET_TYPE_HELLO) {
+      if (inByte & FLAG_SYN) {
+        // SYN frame — HelloPacket (13 bytes): flags(1) + nonce(12).
         expected_length = static_cast<uint8_t>(sizeof(HelloPacket));  // 13
         parseState      = READ_PAYLOAD;
         currentState    = RxState::READING_HELLO;
         updateRxDisplay(currentState, 0, false);
-      } else if (inByte == PACKET_TYPE_DATA) {
+      } else if (inByte & FLAG_DAT) {
+        // DAT frame — DataPacket (15 bytes): flags(1) + seq_num(2) + payload(4) + mac(8).
+        expected_length = static_cast<uint8_t>(sizeof(DataPacket));   // 15
+        parseState      = READ_PAYLOAD;
+        currentState    = RxState::READING_DATA;
+      } else if (inByte & FLAG_FIN) {
+        // FIN frame — reserved for session-close (Етап 2/3).
+        // Treated as a DataPacket-sized frame for now; authenticateAndPlay()
+        // will NACK it once FLAG_FIN handling is added.
         expected_length = static_cast<uint8_t>(sizeof(DataPacket));   // 15
         parseState      = READ_PAYLOAD;
         currentState    = RxState::READING_DATA;
       } else {
-        // Unknown type — treat as noise, restart preamble scan immediately.
+        // No recognised flag bit — channel noise, restart preamble scan.
         rx_index   = 0;
         parseState = WAIT_AA;
       }
@@ -201,8 +213,8 @@ void processReceivedByte(uint8_t inByte) {
     case READ_PAYLOAD: {
       rx_buffer[rx_index++] = inByte;
       if (rx_index == expected_length) {
-        if (rx_buffer[0] == PACKET_TYPE_HELLO) {
-          // processHelloBody() reads nonce from rx_buffer[1..12].
+        if (rx_buffer[0] & FLAG_SYN) {
+          // SYN frame complete — processHelloBody() reads nonce from rx_buffer[1..12].
           processHelloBody();
           currentState = RxState::WAITING_SYNC_1;
           updateRxDisplay(currentState, 0, false);
@@ -236,7 +248,7 @@ void processReceivedByte(uint8_t inByte) {
 //
 // Calling convention: invoked directly from processReceivedByte() once HELLO nonce is complete.
 void processHelloBody() {
-  // rx_buffer[0]     = packet_type (already validated as PACKET_TYPE_HELLO).
+  // rx_buffer[0]     = flags byte (FLAG_SYN confirmed in READ_PAYLOAD dispatch).
   // rx_buffer[1..12] = 12-byte CSPRNG nonce from TX sendHelloPacket().
   memcpy(s_sessionNonce, &rx_buffer[1], HELLO_NONCE_SIZE);
 
@@ -265,10 +277,11 @@ void authenticateAndPlay(const DataPacket* pkt) {
   packetNonce[10] ^= static_cast<uint8_t>((seqNum >> 8u) & 0xFFu);
   packetNonce[11] ^= static_cast<uint8_t>(seqNum         & 0xFFu);
 
-  // Step 2 — 3-byte AAD: packet_type + both bytes of seq_num.
+  // Step 2 — 3-byte AAD: flags + both bytes of seq_num.
   // Must match the TX construction in sendPacket() byte-for-byte.
+  // pkt->flags is used directly — any tamper to the flags byte fails MAC.
   const uint8_t aad[3] = {
-    PACKET_TYPE_DATA,
+    pkt->flags,
     static_cast<uint8_t>(seqNum         & 0xFFu),  // seq_num low byte
     static_cast<uint8_t>((seqNum >> 8u) & 0xFFu)   // seq_num high byte
   };
