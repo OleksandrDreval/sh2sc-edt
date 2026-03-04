@@ -112,6 +112,12 @@ void sendHelloPacket() {
   HelloPacket hello;
   hello.packet_type = PACKET_TYPE_HELLO;
   memcpy(hello.nonce, s_sessionNonce, HELLO_NONCE_SIZE);
+
+  // Prefix every packet (both HELLO and DATA) with the sync preamble so the
+  // RX parser always requires 0xAA 0x55 before accepting any frame type.
+  // Without this, a noise-generated 0x01 byte could hijack the session nonce.
+  Serial.write(SYNC_BYTE_1);
+  Serial.write(SYNC_BYTE_2);
   Serial.write(reinterpret_cast<const uint8_t*>(&hello), sizeof(HelloPacket));
 }
 
