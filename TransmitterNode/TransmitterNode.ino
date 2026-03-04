@@ -218,7 +218,64 @@ void updateTxDisplay(TxState state, uint16_t seqNumber, uint8_t retries) {
     case TxState::SENDING:            lcd.print("SENDING");   break;
     case TxState::WAITING_ACK:        lcd.print("WAIT ACK");  break;
     case TxState::WAIT_BETWEEN_NOTES: lcd.print("WAIT NOTE"); break;
+    case TxState::SENDING_FIN:        lcd.print("SEND FIN");  break;
+    case TxState::WAITING_FIN_ACK:    lcd.print("WAIT FIN");  break;
   }
+}
+
+// sendFinPacket — transmit a FLAG_FIN session-teardown packet.
+//
+// Architecture mirrors sendPacket() exactly so that RX can authenticate
+// the FIN using the same ChaChaPoly pipeline: same nonce derivation,
+// same 3-byte AAD, same truncated (8-byte) Poly1305 MAC.
+//
+// Payload is encrypted zeros — no melody data is carried by the FIN frame.
+// This prevents attackers from distinguishing a FIN from noise using the
+// ciphertext alone; the flags byte in the AAD ties the MAC to FLAG_FIN.
+void sendFinPacket() {
+  // Step 1 — Derive per-packet nonce (identical derivation to sendPacket()).
+  uint8_t packetNonce[HELLO_NONCE_SIZE];
+  memcpy(packetNonce, s_sessionNonce, HELLO_NONCE_SIZE);
+  packetNonce[10] ^= static_cast<uint8_t>((seqNum >> 8u) & 0xFFu);
+  packetNonce[11] ^= static_cast<uint8_t>(seqNum         & 0xFFu);
+
+  // Step 2 — Build packet header.
+  DataPacket finPkt;
+  finPkt.flags      = FLAG_FIN;
+  finPkt.seq_num    = seqNum;
+  finPkt.payload[0] = 0;
+  finPkt.payload[1] = 0;
+
+  // Step 3 — 3-byte AAD: FLAG_FIN(1) + seq_num(2).
+  // Binding the flags byte to the MAC prevents any node from flipping
+  // FLAG_DAT into FLAG_FIN mid-stream without MAC failure on the other side.
+  const uint8_t aad[3] = {
+    FLAG_FIN,
+    static_cast<uint8_t>(seqNum         & 0xFFu),
+    static_cast<uint8_t>((seqNum >> 8u) & 0xFFu)
+  };
+
+  // Step 4 — Encrypt zero payload so ciphertext is indistinguishable from data.
+  const uint16_t plaintext[2] = {0u, 0u};
+  s_cipher.clear();
+  s_cipher.setKey(MASTER_PSK, 32u);
+  s_cipher.setIV(packetNonce, HELLO_NONCE_SIZE);
+  s_cipher.addAuthData(aad, sizeof(aad));
+  s_cipher.encrypt(
+    reinterpret_cast<uint8_t*>(finPkt.payload),
+    reinterpret_cast<const uint8_t*>(plaintext),
+    DATA_PAYLOAD_SIZE
+  );
+
+  // Step 5 — Truncated MAC (8 bytes of 16-byte Poly1305 tag).
+  uint8_t full_mac[16];
+  s_cipher.computeTag(full_mac, 16u);
+  memcpy(finPkt.mac, full_mac, TRUNCATED_MAC_SIZE);
+
+  // Step 6 — Transmit: 2 sync bytes + 15-byte DataPacket struct = 17 bytes.
+  Serial.write(SYNC_BYTE_1);
+  Serial.write(SYNC_BYTE_2);
+  Serial.write(reinterpret_cast<const uint8_t*>(&finPkt), sizeof(DataPacket));
 }
 
 // ENTROPY POOL  (TX variant — includes human-timing jitter from button press)
@@ -382,8 +439,10 @@ void tx_loop() {
 
     case TxState::SENDING:
       if (melodyIndex >= MELODY_LENGTH) {
-        // All notes delivered — melody is complete.
-        currentState = TxState::IDLE;
+        // All notes delivered — initiate session teardown instead of going idle.
+        // This guard is a safety net; in normal flow WAIT_BETWEEN_NOTES detects
+        // melody completion and transitions to SENDING_FIN directly.
+        currentState = TxState::SENDING_FIN;
         updateTxDisplay(currentState, seqNum, retryCount);
         break;
       }
@@ -441,8 +500,56 @@ void tx_loop() {
       if ((millis() - noteWaitStart) >= pgm_read_word(&melody[melodyIndex][1])) {
         melodyIndex++;
         seqNum++;   // Advance together with melodyIndex so keys stay in sync.
-        retryCount   = 0;
-        currentState = TxState::SENDING;
+        retryCount = 0;
+        // When the last note has been acknowledged, move to teardown rather
+        // than back to SENDING — the melody is complete.
+        if (melodyIndex >= MELODY_LENGTH) {
+          currentState = TxState::SENDING_FIN;
+        } else {
+          currentState = TxState::SENDING;
+        }
+        updateTxDisplay(currentState, seqNum, retryCount);
+      }
+      break;
+
+    case TxState::SENDING_FIN:
+      // Transmit the FLAG_FIN teardown packet with the current seqNum.
+      // The packet is fully authenticated (ChaChaPoly), so RX can verify
+      // it is a genuine end-of-session signal and not injected noise.
+      retryCount = 0;
+      sendFinPacket();
+      ackWaitStart = millis();
+      currentState = TxState::WAITING_FIN_ACK;
+      updateTxDisplay(currentState, seqNum, retryCount);
+      break;
+
+    case TxState::WAITING_FIN_ACK:
+      if (Serial.available() > 0) {
+        const uint8_t response = static_cast<uint8_t>(Serial.read());
+
+        if (response == ACK_BYTE) {
+          // RX confirmed the FIN — session closed successfully.
+          // CRITICAL: erase the session nonce from RAM so it cannot be
+          // recovered by subsequent code or a reset-based side-channel.
+          memset(s_sessionNonce, 0, HELLO_NONCE_SIZE);
+          seqNum       = 0;
+          retryCount   = 0;
+          currentState = TxState::IDLE;
+          updateTxDisplay(currentState, seqNum, retryCount);
+
+        } else if (response == NACK_BYTE) {
+          // RX rejected the FIN (MAC failure) — retransmit after a brief drain.
+          retryCount++;
+          delay(10);
+          currentState = TxState::SENDING_FIN;
+          updateTxDisplay(currentState, seqNum, retryCount);
+        }
+        // Any other byte — noise on the feedback line, stay in WAITING_FIN_ACK.
+
+      } else if ((millis() - ackWaitStart) >= ACK_TIMEOUT_MS) {
+        // Timeout: ACK lost in transit — retransmit the FIN packet.
+        retryCount++;
+        currentState = TxState::SENDING_FIN;
         updateTxDisplay(currentState, seqNum, retryCount);
       }
       break;

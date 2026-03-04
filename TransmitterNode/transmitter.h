@@ -26,7 +26,9 @@ enum class TxState : uint8_t {
   IDLE,                // Waiting for button press to start melody playback
   SENDING,             // Forming, encrypting and transmitting the current packet
   WAITING_ACK,         // Packet sent; listening on the feedback line for ACK or NACK
-  WAIT_BETWEEN_NOTES   // ACK received; holding the inter-note pause before advancing
+  WAIT_BETWEEN_NOTES,  // ACK received; holding the inter-note pause before advancing
+  SENDING_FIN,         // All notes delivered; transmitting the FLAG_FIN teardown packet
+  WAITING_FIN_ACK      // FIN sent; waiting for RX acknowledgement before key erasure
 };
 
 // Public API 
@@ -53,6 +55,12 @@ void sendPacket(uint8_t noteIndex, uint16_t noteDurationMs, uint8_t seqNum);
 // High-level entry point used by the FSM SENDING / WAITING_ACK states.
 // Snapshots the plain-text payload (for retransmit) then delegates to sendPacket().
 void formAndSendPacket(uint8_t note_idx, uint16_t duration_ms);
+
+// Constructs and transmits a FLAG_FIN teardown packet.
+// Cryptographically identical to sendPacket(): same nonce derivation, same
+// 3-byte AAD (flags + seq_num), same truncated MAC — zero plaintext payload.
+// Called from SENDING_FIN state; retransmitted on NACK or timeout.
+void sendFinPacket();
 
 // Display helper 
 // Row 0: current packet number (seqNum) + consecutive retry counter.
