@@ -58,7 +58,7 @@ void formAndSendPacket(uint8_t note_idx, uint16_t duration_ms);
 // Row 0: current packet number (seqNum) + consecutive retry counter.
 // Row 1: current FSM state label.
 // Never call in a tight loop — only on FSM state transitions.
-void updateTxDisplay(TxState state, uint8_t seqNum, uint8_t retries);
+void updateTxDisplay(TxState state, uint16_t seqNum, uint8_t retries);
 
 // Entropy pool generator (TX variant) 
 // Fills outputSeed[32] with 256 bits of harvested hardware entropy.

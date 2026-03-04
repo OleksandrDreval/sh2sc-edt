@@ -29,12 +29,15 @@ static LiquidCrystal_AIP31068_I2C lcd(TX_LCD_ADDR, TX_LCD_COLS, TX_LCD_ROWS);
 
 static TxState  currentState  = TxState::IDLE;
 static uint16_t melodyIndex   = 0;   // Current position within melody[][]
-static uint8_t  seqNum        = 0;   // Packet sequence number (0–255, wraps)
+static uint16_t seqNum        = 0;   // Packet sequence number (0–65535, wraps)
 static uint8_t  retryCount    = 0;   // Consecutive retransmission counter (shown on display)
 static uint32_t ackWaitStart  = 0;   // Timestamp (ms) when WAITING_ACK began
 
 // Session nonce — generated once per button press by sendHelloPacket().
-// Per-packet IV is derived as: packetNonce = sessionNonce, last byte ^= seqNum.
+// Per-packet IV is derived as: packetNonce = sessionNonce,
+// last two bytes XOR'd with the 16-bit seqNum (big-endian split):
+//   packetNonce[10] ^= (seqNum >> 8) & 0xFF
+//   packetNonce[11] ^=  seqNum       & 0xFF
 static uint8_t  s_sessionNonce[HELLO_NONCE_SIZE];
 
 // ChaCha20-Poly1305 cipher instance (re-initialised per packet via clear()).
@@ -112,50 +115,62 @@ void sendHelloPacket() {
   Serial.write(reinterpret_cast<const uint8_t*>(&hello), sizeof(HelloPacket));
 }
 
-void sendPacket(uint8_t noteIndex, uint16_t noteDurationMs, uint8_t seqNumber) {
-  // Step 1 — Encode duration: 1 unit = DURATION_UNIT_MS ms, max 255 units.
-  const uint8_t encodedDuration = static_cast<uint8_t>(
-      min(static_cast<uint16_t>(255u),
-          static_cast<uint16_t>(noteDurationMs / DURATION_UNIT_MS))
-  );
-
-  // Step 2 — Derive per-packet IV.
-  // Base: s_sessionNonce (12 bytes from HelloPacket).
-  // Modification: XOR the last byte with seqNumber so each packet
-  //   gets a unique (key, nonce) pair while remaining cheap to compute.
-  //   seqNum 0–255 guarantees no IV reuse within a single session.
+void sendPacket(uint8_t noteIndex, uint16_t noteDurationMs, uint16_t seqNumber) {
+  // Step 1 — Derive per-packet IV using the full 16-bit sequence number.
+  // Spreading seqNumber across bytes[10..11] of the 12-byte nonce ensures
+  // all 65536 possible sequence numbers produce a distinct IV.
   uint8_t packetNonce[HELLO_NONCE_SIZE];
   memcpy(packetNonce, s_sessionNonce, HELLO_NONCE_SIZE);
-  packetNonce[HELLO_NONCE_SIZE - 1u] ^= seqNumber;
+  packetNonce[10] ^= static_cast<uint8_t>((seqNumber >> 8u) & 0xFFu);
+  packetNonce[11] ^= static_cast<uint8_t>(seqNumber         & 0xFFu);
 
-  // Step 3 — Build the open header bytes that serve as AAD.
-  // Both packet_type and seq_num are authenticated but NOT encrypted:
-  //   • packet_type: tampering it from DATA→HELLO is detected.
-  //   • seq_num: tampering with it causes IV desync → MAC fails.
-  const uint8_t aad[2] = { PACKET_TYPE_DATA, seqNumber };
-
-  // Step 4 — Build plain-text payload (2 bytes).
-  const uint8_t plaintext[DATA_PAYLOAD_SIZE] = { noteIndex, encodedDuration };
-
-  // Step 5 — Run ChaCha20-Poly1305.
-  //   clear()         → resets cipher state (mandatory before reuse)
-  //   setKey()        → installs MASTER_PSK (256-bit PSK, never transmitted)
-  //   setIV()         → installs the per-packet 96-bit nonce
-  //   addAuthData()   → feeds the 2 AAD bytes into the Poly1305 MAC
-  //   encrypt()       → XORs plaintext with ChaCha20 keystream → ciphertext
-  //   computeTag()    → finalises the Poly1305 authentication tag (16 bytes)
+  // Step 2 — Populate packet header (used also as the 3-byte AAD).
   DataPacket pkt;
   pkt.packet_type = PACKET_TYPE_DATA;
   pkt.seq_num     = seqNumber;
 
+  // Step 3 — AAD is the 3 open header bytes: packet_type(1) + seq_num(2).
+  // Any tampering with these fields causes MAC verification to fail.
+  // We feed the raw struct bytes so the byte order matches what the receiver
+  // will see on the wire (little-endian seq_num on AVR).
+  const uint8_t aad[3] = {
+    PACKET_TYPE_DATA,
+    static_cast<uint8_t>(seqNumber         & 0xFFu),  // seq_num low byte
+    static_cast<uint8_t>((seqNumber >> 8u) & 0xFFu)   // seq_num high byte
+  };
+
+  // Step 4 — Build 4-byte plain-text payload.
+  // payload[0] = note_index as uint16_t (values 0–20 or REST_INDEX=255)
+  // payload[1] = duration in ms as uint16_t (direct, no DURATION_UNIT_MS encoding)
+  const uint16_t plaintext[2] = {
+    static_cast<uint16_t>(noteIndex),
+    noteDurationMs
+  };
+
+  // Step 5 — Run ChaCha20-Poly1305.
   s_cipher.clear();
   s_cipher.setKey(MASTER_PSK, 32u);
   s_cipher.setIV(packetNonce, HELLO_NONCE_SIZE);
   s_cipher.addAuthData(aad, sizeof(aad));
-  s_cipher.encrypt(pkt.payload, plaintext, DATA_PAYLOAD_SIZE);
-  s_cipher.computeTag(pkt.mac, AUTH_TAG_SIZE);
+  s_cipher.encrypt(
+    reinterpret_cast<uint8_t*>(pkt.payload),
+    reinterpret_cast<const uint8_t*>(plaintext),
+    DATA_PAYLOAD_SIZE  // 4 bytes
+  );
 
-  // Step 6 — Transmit 20 bytes over UART.
+  // Step 6 — Truncated MAC: compute full 16-byte Poly1305 tag, transmit only
+  // the first TRUNCATED_MAC_SIZE (8) bytes.  This halves MAC overhead while
+  // still providing 64-bit authentication strength — sufficient for a
+  // noise-resilience demo over a short-range UART link.
+  uint8_t full_mac[16];
+  s_cipher.computeTag(full_mac, 16u);
+  memcpy(pkt.mac, full_mac, TRUNCATED_MAC_SIZE);
+
+  // Step 7 — Transmit: 2 sync bytes + 15-byte DataPacket struct = 17 bytes.
+  // The sync preamble lets the receiver re-lock onto the frame boundary
+  // after a noise burst without waiting for a new HelloPacket.
+  Serial.write(SYNC_BYTE_1);
+  Serial.write(SYNC_BYTE_2);
   Serial.write(reinterpret_cast<const uint8_t*>(&pkt), sizeof(DataPacket));
 }
 
@@ -179,7 +194,7 @@ void formAndSendPacket(uint8_t note_idx, uint16_t duration_ms) {
 // Row 0: FSM state label.
 // Row 1: current sequence number + last checksum in hex.
  
-void updateTxDisplay(TxState state, uint8_t seqNumber, uint8_t retries) {
+void updateTxDisplay(TxState state, uint16_t seqNumber, uint8_t retries) {
   lcd.clear();
 
   // Row 0: packet number + retry counter
@@ -392,8 +407,11 @@ void tx_loop() {
           updateTxDisplay(currentState, seqNum, retryCount);
 
         } else if (response == NACK_BYTE) {
-          // NACK: RX detected corruption → retransmit the SAME packet.
+          // NACK: RX detected corruption → wait briefly then retransmit the SAME packet.
+          // delay(10) gives the RX UART buffer time to drain residual noise bytes
+          // before the retransmission arrives, reducing cascading NACK storms.
           retryCount++;
+          delay(10);
           formAndSendPacket(pendingNoteIndex, pendingNoteDuration);
           ackWaitStart = millis();
           updateTxDisplay(currentState, seqNum, retryCount);
