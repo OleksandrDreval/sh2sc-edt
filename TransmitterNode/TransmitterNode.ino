@@ -110,7 +110,7 @@ void sendHelloPacket() {
   }
 
   HelloPacket hello;
-  hello.packet_type = PACKET_TYPE_HELLO;
+  hello.flags = FLAG_SYN;
   memcpy(hello.nonce, s_sessionNonce, HELLO_NONCE_SIZE);
 
   // Prefix every packet (both HELLO and DATA) with the sync preamble so the
@@ -132,15 +132,15 @@ void sendPacket(uint8_t noteIndex, uint16_t noteDurationMs, uint16_t seqNumber) 
 
   // Step 2 — Populate packet header (used also as the 3-byte AAD).
   DataPacket pkt;
-  pkt.packet_type = PACKET_TYPE_DATA;
-  pkt.seq_num     = seqNumber;
+  pkt.flags   = FLAG_DAT;
+  pkt.seq_num = seqNumber;
 
-  // Step 3 — AAD is the 3 open header bytes: packet_type(1) + seq_num(2).
+  // Step 3 — AAD is the 3 open header bytes: flags(1) + seq_num(2).
   // Any tampering with these fields causes MAC verification to fail.
   // We feed the raw struct bytes so the byte order matches what the receiver
   // will see on the wire (little-endian seq_num on AVR).
   const uint8_t aad[3] = {
-    PACKET_TYPE_DATA,
+    FLAG_DAT,
     static_cast<uint8_t>(seqNumber         & 0xFFu),  // seq_num low byte
     static_cast<uint8_t>((seqNumber >> 8u) & 0xFFu)   // seq_num high byte
   };
