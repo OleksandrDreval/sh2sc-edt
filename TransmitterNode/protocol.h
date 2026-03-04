@@ -77,20 +77,20 @@ struct HelloPacket {
 //   packetNonce = sessionNonce XOR (0x00…0 || seq_num)
 // without first decrypting the payload.
 //
-// Wire layout (20 bytes total):
-//   Byte  0     : packet_type (0x02) ─┬─ AAD (both bytes are authenticated
-//   Byte  1     : seq_num            ─┼─ but NOT encrypted by ChaCha20)
-//   Bytes 2–3   : payload[2]         — ChaCha20 ciphertext (note, duration)
-//   Bytes 4–19  : mac[16]            — Poly1305 authentication tag
+// Wire layout (15 bytes, preceded by 2 sync bytes = 17 bytes on the wire):
+//   Byte  0     : packet_type (0x02)  ─┬─ AAD (3 bytes authenticated,
+//   Bytes 1–2   : seq_num (uint16_t)  ─┘     but NOT encrypted)
+//   Bytes 3–6   : payload[2] uint16_t — ChaCha20 ciphertext (note_index, duration_ms)
+//   Bytes 7–14  : mac[8]              — first 8 bytes of Poly1305 tag
 //
-// Security property: any bit-flip in packet_type OR seq_num causes MAC
-// verification to fail and the packet is discarded (NACK sent).
+// Security property: any bit-flip in packet_type OR either seq_num byte causes
+// MAC verification to fail and the packet is discarded (NACK sent).
 #pragma pack(push, 1)
 struct DataPacket {
-  uint8_t packet_type;                // Always PACKET_TYPE_DATA (0x02)     ─┬─ plaintext AAD
-  uint8_t seq_num;                    // Stop-and-Wait sequence number (0–255) ─┼─ (authenticated,
-  uint8_t payload[DATA_PAYLOAD_SIZE]; // Encrypted [note_index, duration_encoded]  // not encrypted)
-  uint8_t mac[AUTH_TAG_SIZE];         // Poly1305 authentication tag (integrity + authenticity)
+  uint8_t  packet_type;               // Always PACKET_TYPE_DATA (0x02)  ─┬─ plaintext AAD
+  uint16_t seq_num;                   // 16-bit sequence number (little-endian) ─┘
+  uint16_t payload[2];                // Encrypted: [note_index, duration_ms]
+  uint8_t  mac[TRUNCATED_MAC_SIZE];   // First 8 bytes of Poly1305 tag
 };
 #pragma pack(pop)
 

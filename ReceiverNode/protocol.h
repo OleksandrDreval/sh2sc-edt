@@ -43,6 +43,9 @@ const uint8_t TRUNCATED_MAC_SIZE =  8u; // Bytes of MAC actually transmitted (fi
 const uint8_t DATA_PAYLOAD_SIZE  = 4u;  // sizeof(uint16_t) * 2
 
 // Synchronisation preamble — two bytes sent immediately before every DataPacket.
+// The receiver scans for this pattern to re-lock onto the frame boundary
+// after a noise burst.  Using two distinct bytes reduces the false-sync rate
+// compared to a single repeated byte.
 const uint8_t SYNC_BYTE_1 = 0xAA;
 const uint8_t SYNC_BYTE_2 = 0x55;
 
@@ -68,16 +71,25 @@ struct HelloPacket {
 
 // DATA packet
 //
+// Carries one encrypted note (note_index + duration_encoded) authenticated
+// with a 16-byte Poly1305 MAC tag.  seq_num lives in the open header so
+// both nodes can independently compute the per-packet nonce:
+//   packetNonce = sessionNonce XOR (0x00…0 || seq_num)
+// without first decrypting the payload.
+//
 // Wire layout (15 bytes, preceded by 2 sync bytes = 17 bytes on the wire):
-//   Byte  0     : packet_type (0x02)  ─┬─ AAD (3 bytes, authenticated
+//   Byte  0     : packet_type (0x02)  ─┬─ AAD (3 bytes authenticated,
 //   Bytes 1–2   : seq_num (uint16_t)  ─┘     but NOT encrypted)
 //   Bytes 3–6   : payload[2] uint16_t — ChaCha20 ciphertext (note_index, duration_ms)
 //   Bytes 7–14  : mac[8]              — first 8 bytes of Poly1305 tag
+//
+// Security property: any bit-flip in packet_type OR either seq_num byte causes
+// MAC verification to fail and the packet is discarded (NACK sent).
 #pragma pack(push, 1)
 struct DataPacket {
   uint8_t  packet_type;               // Always PACKET_TYPE_DATA (0x02)  ─┬─ plaintext AAD
-  uint16_t seq_num;                   // Stop-and-Wait sequence number      ─┘ (authenticated,
-  uint16_t payload[2];                // Encrypted [note_index, duration_ms]  //   not encrypted)
+  uint16_t seq_num;                   // 16-bit sequence number (little-endian) ─┘
+  uint16_t payload[2];                // Encrypted: [note_index, duration_ms]
   uint8_t  mac[TRUNCATED_MAC_SIZE];   // First 8 bytes of Poly1305 tag
 };
 #pragma pack(pop)
@@ -90,9 +102,12 @@ const uint8_t NACK_BYTE = 0x15; // Negative acknowledgement (MAC mismatch — re
 
 // Note encoding helpers
 
+// REST / pause sentinel.
+// TX sends this index to instruct RX to silence the buzzer.
 const uint8_t REST_INDEX = 255;
 
-// Duration is stored directly as uint16_t milliseconds in the payload.
+// Duration is stored directly as uint16_t milliseconds in the payload—no
+// encoding step required now that payload fields are 16-bit.
 
 // Stop-and-Wait ARQ timing
 const uint32_t ACK_TIMEOUT_MS = 50UL; // Max ms to wait for ACK before retransmitting
