@@ -35,13 +35,16 @@ const uint8_t PACKET_TYPE_DATA  = 0x02; // Data frame       — carries an encry
 
 // Frame size constants
 const uint8_t HELLO_NONCE_SIZE   = 12u; // ChaChaPoly IV length (IETF 96-bit nonce)
-const uint8_t AUTH_TAG_SIZE      = 16u; // Poly1305 authentication tag length
-// Plaintext payload of a DATA packet (only the encrypted portion):
-//   [0] note_index       (1 byte)  — index into the receiver's frequency dictionary
-//   [1] duration_encoded (1 byte)  — duration in DURATION_UNIT_MS steps
-// NOTE: seq_num is in the open header (not encrypted) so both nodes can
-//       derive the per-packet nonce independently without decrypting first.
-const uint8_t DATA_PAYLOAD_SIZE  = 2u;
+const uint8_t AUTH_TAG_SIZE      = 16u; // Full Poly1305 tag length (used internally)
+const uint8_t TRUNCATED_MAC_SIZE =  8u; // Bytes of MAC actually transmitted (first 8 of 16)
+// Plaintext payload of a DATA packet (encrypted portion):
+//   [0] note_index  (uint16_t) — index into the receiver's frequency dictionary
+//   [1] duration_ms (uint16_t) — note duration in milliseconds (direct, no encoding)
+const uint8_t DATA_PAYLOAD_SIZE  = 4u;  // sizeof(uint16_t) * 2
+
+// Synchronisation preamble — two bytes sent immediately before every DataPacket.
+const uint8_t SYNC_BYTE_1 = 0xAA;
+const uint8_t SYNC_BYTE_2 = 0x55;
 
 
 // HELLO packet
@@ -65,26 +68,17 @@ struct HelloPacket {
 
 // DATA packet
 //
-// Carries one encrypted note (note_index + duration_encoded) authenticated
-// with a 16-byte Poly1305 MAC tag.  seq_num lives in the open header so
-// both nodes can independently compute the per-packet nonce:
-//   packetNonce = sessionNonce XOR (0x00…0 || seq_num)
-// without first decrypting the payload.
-//
-// Wire layout (20 bytes total):
-//   Byte  0     : packet_type (0x02) ─┬─ AAD (both bytes are authenticated
-//   Byte  1     : seq_num            ─┼─ but NOT encrypted by ChaCha20)
-//   Bytes 2–3   : payload[2]         — ChaCha20 ciphertext (note, duration)
-//   Bytes 4–19  : mac[16]            — Poly1305 authentication tag
-//
-// Security property: any bit-flip in packet_type OR seq_num causes MAC
-// verification to fail and the packet is discarded (NACK sent).
+// Wire layout (15 bytes, preceded by 2 sync bytes = 17 bytes on the wire):
+//   Byte  0     : packet_type (0x02)  ─┬─ AAD (3 bytes, authenticated
+//   Bytes 1–2   : seq_num (uint16_t)  ─┘     but NOT encrypted)
+//   Bytes 3–6   : payload[2] uint16_t — ChaCha20 ciphertext (note_index, duration_ms)
+//   Bytes 7–14  : mac[8]              — first 8 bytes of Poly1305 tag
 #pragma pack(push, 1)
 struct DataPacket {
-  uint8_t packet_type;                // Always PACKET_TYPE_DATA (0x02)     ─┬─ plaintext AAD
-  uint8_t seq_num;                    // Stop-and-Wait sequence number (0–255) ─┼─ (authenticated,
-  uint8_t payload[DATA_PAYLOAD_SIZE]; // Encrypted [note_index, duration_encoded]  // not encrypted)
-  uint8_t mac[AUTH_TAG_SIZE];         // Poly1305 authentication tag (integrity + authenticity)
+  uint8_t  packet_type;               // Always PACKET_TYPE_DATA (0x02)  ─┬─ plaintext AAD
+  uint16_t seq_num;                   // Stop-and-Wait sequence number      ─┘ (authenticated,
+  uint16_t payload[2];                // Encrypted [note_index, duration_ms]  //   not encrypted)
+  uint8_t  mac[TRUNCATED_MAC_SIZE];   // First 8 bytes of Poly1305 tag
 };
 #pragma pack(pop)
 
@@ -96,14 +90,9 @@ const uint8_t NACK_BYTE = 0x15; // Negative acknowledgement (MAC mismatch — re
 
 // Note encoding helpers
 
-// REST / pause sentinel.
-// TX sends this index to instruct RX to silence the buzzer.
 const uint8_t REST_INDEX = 255;
 
-// Duration encoding unit (milliseconds per payload byte unit).
-// duration_encoded = duration_ms / DURATION_UNIT_MS
-// Maximum representable duration: 255 * 20 = 5 100 ms.
-const uint8_t DURATION_UNIT_MS = 20;
+// Duration is stored directly as uint16_t milliseconds in the payload.
 
 // Stop-and-Wait ARQ timing
 const uint32_t ACK_TIMEOUT_MS = 50UL; // Max ms to wait for ACK before retransmitting

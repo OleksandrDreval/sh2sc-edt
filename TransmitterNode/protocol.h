@@ -35,13 +35,19 @@ const uint8_t PACKET_TYPE_DATA  = 0x02; // Data frame       — carries an encry
 
 // Frame size constants
 const uint8_t HELLO_NONCE_SIZE   = 12u; // ChaChaPoly IV length (IETF 96-bit nonce)
-const uint8_t AUTH_TAG_SIZE      = 16u; // Poly1305 authentication tag length
-// Plaintext payload of a DATA packet (only the encrypted portion):
-//   [0] note_index       (1 byte)  — index into the receiver's frequency dictionary
-//   [1] duration_encoded (1 byte)  — duration in DURATION_UNIT_MS steps
-// NOTE: seq_num is in the open header (not encrypted) so both nodes can
-//       derive the per-packet nonce independently without decrypting first.
-const uint8_t DATA_PAYLOAD_SIZE  = 2u;
+const uint8_t AUTH_TAG_SIZE      = 16u; // Full Poly1305 tag length (used internally)
+const uint8_t TRUNCATED_MAC_SIZE =  8u; // Bytes of MAC actually transmitted (first 8 of 16)
+// Plaintext payload of a DATA packet (encrypted portion):
+//   [0] note_index  (uint16_t) — index into the receiver's frequency dictionary
+//   [1] duration_ms (uint16_t) — note duration in milliseconds (direct, no encoding)
+const uint8_t DATA_PAYLOAD_SIZE  = 4u;  // sizeof(uint16_t) * 2
+
+// Synchronisation preamble — two bytes sent immediately before every DataPacket.
+// The receiver scans for this pattern to re-lock onto the frame boundary
+// after a noise burst.  Using two distinct bytes reduces the false-sync rate
+// compared to a single repeated byte.
+const uint8_t SYNC_BYTE_1 = 0xAA;
+const uint8_t SYNC_BYTE_2 = 0x55;
 
 
 // HELLO packet
@@ -100,10 +106,8 @@ const uint8_t NACK_BYTE = 0x15; // Negative acknowledgement (MAC mismatch — re
 // TX sends this index to instruct RX to silence the buzzer.
 const uint8_t REST_INDEX = 255;
 
-// Duration encoding unit (milliseconds per payload byte unit).
-// duration_encoded = duration_ms / DURATION_UNIT_MS
-// Maximum representable duration: 255 * 20 = 5 100 ms.
-const uint8_t DURATION_UNIT_MS = 20;
+// Duration is stored directly as uint16_t milliseconds in the payload—no
+// encoding step required now that payload fields are 16-bit.
 
 // Stop-and-Wait ARQ timing
 const uint32_t ACK_TIMEOUT_MS = 50UL; // Max ms to wait for ACK before retransmitting
