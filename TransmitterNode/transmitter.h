@@ -24,6 +24,8 @@ const uint16_t DEBOUNCE_DELAY_MS = 50;   // Milliseconds a signal must be stable
 // The entire TX logic is driven by this FSM; no blocking delays allowed.
 enum class TxState : uint8_t {
   IDLE,                // Waiting for button press to start melody playback
+  SENDING_HELLO,       // Generating nonce and broadcasting the SYN handshake
+  WAITING_HELLO_ACK,   // SYN sent; waiting for RX to confirm the nonce
   SENDING,             // Forming, encrypting and transmitting the current packet
   WAITING_ACK,         // Packet sent; listening on the feedback line for ACK or NACK
   WAIT_BETWEEN_NOTES,  // ACK received; holding the inter-note pause before advancing

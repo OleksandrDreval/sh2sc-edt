@@ -89,6 +89,23 @@ bool readButtonPress() {
  
 // PACKET HELPERS
 
+// drainRxFifo — discard all bytes currently waiting in the 64-byte hardware
+// UART RX FIFO before transmitting any packet.
+//
+// Problem it solves: if the channel was noisy before the session started,
+// RX may have sent many NACKs (garbage parsed as corrupted DATA frames).
+// Those NACKs accumulate in TX's RX FIFO.  When TX sends HELLO and then
+// immediately polls Serial.available(), it reads a stale NACK, interprets
+// it as rejection of the HELLO it just sent, and enters a retry storm.
+//
+// Calling drainRxFifo() at the start of every send function ensures we
+// only ever see responses to the packet we are about to transmit.
+static inline void drainRxFifo() {
+  while (Serial.available() > 0) {
+    Serial.read();
+  }
+}
+
 // sendHelloPacket — generate a fresh session nonce and broadcast it.
 //
 // Called ONCE per button press (from FSM IDLE state) BEFORE any DataPacket
@@ -113,6 +130,8 @@ void sendHelloPacket() {
   hello.flags = FLAG_SYN;
   memcpy(hello.nonce, s_sessionNonce, HELLO_NONCE_SIZE);
 
+  // Drain stale responses before transmitting; see drainRxFifo() comment.
+  drainRxFifo();
   // Prefix every packet (both HELLO and DATA) with the sync preamble so the
   // RX parser always requires 0xAA 0x55 before accepting any frame type.
   // Without this, a noise-generated 0x01 byte could hijack the session nonce.
@@ -172,9 +191,10 @@ void sendPacket(uint8_t noteIndex, uint16_t noteDurationMs, uint16_t seqNumber) 
   s_cipher.computeTag(full_mac, 16u);
   memcpy(pkt.mac, full_mac, TRUNCATED_MAC_SIZE);
 
-  // Step 7 — Transmit: 2 sync bytes + 15-byte DataPacket struct = 17 bytes.
+  // Step 7 — Transmit: drain FIFO, then 2 sync bytes + 15-byte DataPacket = 17 bytes.
   // The sync preamble lets the receiver re-lock onto the frame boundary
   // after a noise burst without waiting for a new HelloPacket.
+  drainRxFifo();
   Serial.write(SYNC_BYTE_1);
   Serial.write(SYNC_BYTE_2);
   Serial.write(reinterpret_cast<const uint8_t*>(&pkt), sizeof(DataPacket));
@@ -215,6 +235,8 @@ void updateTxDisplay(TxState state, uint16_t seqNumber, uint8_t retries) {
   lcd.setCursor(0, 1);
   switch (state) {
     case TxState::IDLE:               lcd.print("IDLE");      break;
+    case TxState::SENDING_HELLO:      lcd.print("SEND SYN");  break;
+    case TxState::WAITING_HELLO_ACK:  lcd.print("WAIT SYN");  break;
     case TxState::SENDING:            lcd.print("SENDING");   break;
     case TxState::WAITING_ACK:        lcd.print("WAIT ACK");  break;
     case TxState::WAIT_BETWEEN_NOTES: lcd.print("WAIT NOTE"); break;
@@ -272,7 +294,8 @@ void sendFinPacket() {
   s_cipher.computeTag(full_mac, 16u);
   memcpy(finPkt.mac, full_mac, TRUNCATED_MAC_SIZE);
 
-  // Step 6 — Transmit: 2 sync bytes + 15-byte DataPacket struct = 17 bytes.
+  // Step 6 — Transmit: drain FIFO, then 2 sync bytes + 15-byte DataPacket = 17 bytes.
+  drainRxFifo();
   Serial.write(SYNC_BYTE_1);
   Serial.write(SYNC_BYTE_2);
   Serial.write(reinterpret_cast<const uint8_t*>(&finPkt), sizeof(DataPacket));
@@ -406,33 +429,45 @@ void tx_loop() {
         melodyIndex = 0;
         seqNum      = 0;
         retryCount  = 0;  // Fresh start — reset the retry display counter.
+        currentState = TxState::SENDING_HELLO;
+        updateTxDisplay(currentState, seqNum, retryCount);
+      }
+      break;
 
-        // Handshake: generate a new session nonce and broadcast it to RX.
-        // RX will store this nonce and use it (combined with seqNum) to derive
-        // the per-packet IV for every subsequent DataPacket this session.
-        // sendHelloPacket() fills s_sessionNonce internally, then transmits it.
-        sendHelloPacket();
+    case TxState::SENDING_HELLO:
+      // Generate a fresh CSPRNG nonce and broadcast it inside a SYN frame.
+      // drainRxFifo() runs inside sendHelloPacket(), so any NACK bytes that
+      // accumulated during a pre-session noise burst are purged first.
+      sendHelloPacket();
+      ackWaitStart = millis(); // Open the ACK receive window.
+      currentState = TxState::WAITING_HELLO_ACK;
+      updateTxDisplay(currentState, seqNum, retryCount);
+      break;
 
-        // ENTROPY TEST (remove after validation)
-        // Harvest the nonce at the exact microsecond of the button press so
-        // human-timing jitter is maximally folded into the pool (Source 6).
-    //  uint8_t seedBuf[32];
-    //  generateEntropyPool(seedBuf);
-    //  // Display first 4 bytes (word 0) as hex for quick visual check.
-    //  const uint32_t previewWord =
-    //      (static_cast<uint32_t>(seedBuf[3]) << 24u) |
-    //      (static_cast<uint32_t>(seedBuf[2]) << 16u) |
-    //      (static_cast<uint32_t>(seedBuf[1]) <<  8u) |
-    //       static_cast<uint32_t>(seedBuf[0]);
-    //  lcd.clear();
-    //  lcd.setCursor(0, 0);
-    //  lcd.print("TX KEY:");
-    //  lcd.setCursor(0, 1);
-    //  lcd.print(previewWord, HEX);  // e.g. "A3F1C72B"
-    //  delay(3000);                  // Hold result on screen for 3 s
-        // END ENTROPY TEST
+    case TxState::WAITING_HELLO_ACK:
+      if (Serial.available() > 0) {
+        const uint8_t response = static_cast<uint8_t>(Serial.read());
 
-        currentState = TxState::SENDING;
+        if (response == ACK_BYTE) {
+          // RX confirmed the nonce — session is live, start sending melody.
+          retryCount   = 0;
+          currentState = TxState::SENDING;
+          updateTxDisplay(currentState, seqNum, retryCount);
+        } else {
+          // NACK or noise: RX rejected the SYN (parser desync or burst).
+          // Brief cooldown before retransmitting a fresh HelloPacket so the
+          // RX UART FIFO has time to drain, and a new nonce is generated to
+          // keep the replay window always moving forward.
+          retryCount++;
+          delay(10);
+          currentState = TxState::SENDING_HELLO;
+          updateTxDisplay(currentState, seqNum, retryCount);
+        }
+
+      } else if ((millis() - ackWaitStart) >= ACK_TIMEOUT_MS) {
+        // Timeout: HELLO was lost or RX FIFO was overwhelmed — retransmit.
+        retryCount++;
+        currentState = TxState::SENDING_HELLO;
         updateTxDisplay(currentState, seqNum, retryCount);
       }
       break;
