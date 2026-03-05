@@ -33,6 +33,9 @@ static uint16_t seqNum        = 0;   // Packet sequence number (0–65535, wraps
 static uint8_t  retryCount    = 0;   // Consecutive retransmission counter (shown on display)
 static uint32_t ackWaitStart  = 0;   // Timestamp (ms) when WAITING_ACK began
 
+// Auto-reconnect timer — fires every RECONNECT_INTERVAL_MS in RECONNECTING state.
+static uint32_t lastReconnectAttempt = 0;
+
 // Session nonce — generated once per button press by sendHelloPacket().
 // Per-packet IV is derived as: packetNonce = sessionNonce,
 // last two bytes XOR'd with the 16-bit seqNum (big-endian split):
@@ -234,14 +237,15 @@ void updateTxDisplay(TxState state, uint16_t seqNumber, uint8_t retries) {
   // Row 1: FSM state label
   lcd.setCursor(0, 1);
   switch (state) {
-    case TxState::IDLE:               lcd.print("IDLE");      break;
-    case TxState::SENDING_HELLO:      lcd.print("SEND SYN");  break;
-    case TxState::WAITING_HELLO_ACK:  lcd.print("WAIT SYN");  break;
-    case TxState::SENDING:            lcd.print("SENDING");   break;
-    case TxState::WAITING_ACK:        lcd.print("WAIT ACK");  break;
-    case TxState::WAIT_BETWEEN_NOTES: lcd.print("WAIT NOTE"); break;
-    case TxState::SENDING_FIN:        lcd.print("SEND FIN");  break;
-    case TxState::WAITING_FIN_ACK:    lcd.print("WAIT FIN");  break;
+    case TxState::IDLE:               lcd.print("IDLE");         break;
+    case TxState::RECONNECTING:       lcd.print("RECONNECTING"); break;
+    case TxState::SENDING_HELLO:      lcd.print("SEND SYN");     break;
+    case TxState::WAITING_HELLO_ACK:  lcd.print("WAIT SYN");     break;
+    case TxState::SENDING:            lcd.print("SENDING");      break;
+    case TxState::WAITING_ACK:        lcd.print("WAIT ACK");     break;
+    case TxState::WAIT_BETWEEN_NOTES: lcd.print("WAIT NOTE");    break;
+    case TxState::SENDING_FIN:        lcd.print("SEND FIN");     break;
+    case TxState::WAITING_FIN_ACK:    lcd.print("WAIT FIN");     break;
   }
 }
 
@@ -387,30 +391,34 @@ void generateEntropyPool(uint8_t* outputSeed) {
   }
 }
 
-// abortSession — emergency teardown when the receiver becomes unreachable.
+// suspendSession — link-loss teardown with melody position preserved.
 //
 // Called when retryCount reaches MAX_RETRIES in any WAITING_* state.
-// Erases the session nonce from RAM (forward-secrecy), resets all counters,
-// and returns to IDLE so the operator can press the button again.
-// The blocking delay(2000) is intentional — an abort is an exceptional event
-// and the 2-second hold lets the operator read the error before IDLE restores.
-void abortSession() {
+// Unlike a clean FIN close, this is an unclean abort: the receiver vanished
+// without sending FLAG_FIN.  We erase the session nonce (forward-secrecy)
+// but deliberately keep melodyIndex so RECONNECTING can resume from the
+// exact note where the link dropped rather than restarting the whole melody.
+// The blocking delay(2000) holds the error message long enough to read AND
+// pre-arms lastReconnectAttempt so the first auto-ping fires after a full
+// RECONNECT_INTERVAL_MS, giving the receiver time to reboot.
+void suspendSession() {
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("RX LOST! ABORT");
+  lcd.print("LINK LOST!");
   lcd.setCursor(0, 1);
-  lcd.print("RTY:");
-  lcd.print(retryCount);
+  lcd.print("RECONNECTING...");
 
-  // Erase key material so captured ciphertext cannot be replayed after restart.
+  // Erase key material — the old nonce is no longer safe to use.
   memset(s_sessionNonce, 0, HELLO_NONCE_SIZE);
-  melodyIndex  = 0;
+  // melodyIndex intentionally NOT reset — resume from point of failure.
   seqNum       = 0;
   retryCount   = 0;
-  currentState = TxState::IDLE;
+  currentState = TxState::RECONNECTING;
 
-  delay(2000);  // Hold error message so operator can read it.
-  updateTxDisplay(currentState, seqNum, retryCount);
+  // Pre-arm the timer so the first auto-ping waits a full interval.
+  lastReconnectAttempt = millis();
+
+  delay(2000);  // Hold error message so the operator can read it.
 }
 
  
@@ -486,7 +494,7 @@ void tx_loop() {
           // keep the replay window always moving forward.
           retryCount++;
           if (retryCount >= MAX_RETRIES) {
-            abortSession();
+            suspendSession();
           } else {
             delay(10);
             currentState = TxState::SENDING_HELLO;
@@ -498,7 +506,7 @@ void tx_loop() {
         // Timeout: HELLO was lost or RX FIFO was overwhelmed — retransmit.
         retryCount++;
         if (retryCount >= MAX_RETRIES) {
-          abortSession();
+          suspendSession();
         } else {
           currentState = TxState::SENDING_HELLO;
           updateTxDisplay(currentState, seqNum, retryCount);
@@ -546,7 +554,7 @@ void tx_loop() {
           // before the retransmission arrives, reducing cascading NACK storms.
           retryCount++;
           if (retryCount >= MAX_RETRIES) {
-            abortSession();
+            suspendSession();
           } else {
             delay(10);
             formAndSendPacket(pendingNoteIndex, pendingNoteDuration);
@@ -561,7 +569,7 @@ void tx_loop() {
         // Retransmit the SAME packet with the SAME seqNum.
         retryCount++;
         if (retryCount >= MAX_RETRIES) {
-          abortSession();
+          suspendSession();
         } else {
           formAndSendPacket(pendingNoteIndex, pendingNoteDuration);
           ackWaitStart = millis();
@@ -605,10 +613,11 @@ void tx_loop() {
         const uint8_t response = static_cast<uint8_t>(Serial.read());
 
         if (response == ACK_BYTE) {
-          // RX confirmed the FIN — session closed successfully.
+          // RX confirmed the FIN — session closed successfully (clean close).
           // CRITICAL: erase the session nonce from RAM so it cannot be
           // recovered by subsequent code or a reset-based side-channel.
           memset(s_sessionNonce, 0, HELLO_NONCE_SIZE);
+          melodyIndex  = 0;  // Clean close — restart melody from the beginning.
           seqNum       = 0;
           retryCount   = 0;
           currentState = TxState::IDLE;
@@ -618,7 +627,7 @@ void tx_loop() {
           // RX rejected the FIN (MAC failure) — retransmit after a brief drain.
           retryCount++;
           if (retryCount >= MAX_RETRIES) {
-            abortSession();
+            suspendSession();
           } else {
             delay(10);
             currentState = TxState::SENDING_FIN;
@@ -631,11 +640,36 @@ void tx_loop() {
         // Timeout: ACK lost in transit — retransmit the FIN packet.
         retryCount++;
         if (retryCount >= MAX_RETRIES) {
-          abortSession();
+          suspendSession();
         } else {
           currentState = TxState::SENDING_FIN;
           updateTxDisplay(currentState, seqNum, retryCount);
         }
+      }
+      break;
+
+    case TxState::RECONNECTING:
+      // Auto-Resume state: entered after suspendSession() when the link drops
+      // mid-melody. melodyIndex is preserved so we resume from where we left off.
+      //
+      // Button press  = operator forces a hard restart from note 0.
+      // Auto-timer    = silent HELLO ping every RECONNECT_INTERVAL_MS.
+      if (buttonPressed) {
+        // Manual override: discard progress, restart melody from the beginning.
+        melodyIndex  = 0;
+        seqNum       = 0;
+        retryCount   = 0;
+        currentState = TxState::SENDING_HELLO;
+        updateTxDisplay(currentState, seqNum, retryCount);
+        break;
+      }
+      if ((millis() - lastReconnectAttempt) >= RECONNECT_INTERVAL_MS) {
+        // Auto-ping: attempt a new HELLO handshake to resume the session.
+        // On success WAITING_HELLO_ACK → SENDING will pick up at melodyIndex.
+        // On MAX_RETRIES suspendSession() re-enters RECONNECTING (keeps trying).
+        lastReconnectAttempt = millis();
+        currentState = TxState::SENDING_HELLO;
+        updateTxDisplay(currentState, seqNum, retryCount);
       }
       break;
   }

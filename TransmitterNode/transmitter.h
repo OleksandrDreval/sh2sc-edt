@@ -24,12 +24,14 @@ const uint16_t DEBOUNCE_DELAY_MS = 50;   // Milliseconds a signal must be stable
 //
 // Maximum consecutive retransmissions before declaring the receiver unreachable.
 // Prevents a runaway retry loop if RX loses power without sending FLAG_FIN.
-const uint8_t  MAX_RETRIES = 50;         // Max consecutive retransmissions before abortSession()
+const uint8_t  MAX_RETRIES           = 50;    // Max consecutive retransmissions before suspendSession()
+const uint32_t RECONNECT_INTERVAL_MS = 2000;  // Auto-reconnect ping interval (ms)
 
 // Finite State Machine states 
 // The entire TX logic is driven by this FSM; no blocking delays allowed.
 enum class TxState : uint8_t {
   IDLE,                // Waiting for button press to start melody playback
+  RECONNECTING,        // Link lost mid-melody; auto-pinging RX every RECONNECT_INTERVAL_MS
   SENDING_HELLO,       // Generating nonce and broadcasting the SYN handshake
   WAITING_HELLO_ACK,   // SYN sent; waiting for RX to confirm the nonce
   SENDING,             // Forming, encrypting and transmitting the current packet
@@ -42,6 +44,12 @@ enum class TxState : uint8_t {
 // Public API 
 void tx_setup();
 void tx_loop();
+
+// Session suspend / Auto-Resume 
+// Called when retryCount hits MAX_RETRIES in any WAITING_* state.
+// Erases the session nonce from RAM (forward-secrecy), preserves melodyIndex
+// so transmission can resume from the point of failure, and enters RECONNECTING.
+void suspendSession();
 
 // Button helper (millis-based debounce) 
 // Returns true once per physical button press (falling edge on INPUT_PULLUP).
