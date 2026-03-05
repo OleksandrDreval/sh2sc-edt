@@ -269,6 +269,11 @@ void processHelloBody() {
   s_cipher.setKey(MASTER_PSK, 32u);
 
   s_sessionActive = true;
+
+  // Confirm to TX that the nonce was received and the session key is armed.
+  // Without this ACK, TX's WAITING_HELLO_ACK state would always time out
+  // and keep retransmitting a new HelloPacket on every cycle.
+  Serial.write(ACK_BYTE);
 }
 
 // authenticateAndPlay — full ChaCha20-Poly1305 v2 RX pipeline.
