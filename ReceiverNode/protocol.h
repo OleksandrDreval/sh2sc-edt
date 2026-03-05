@@ -118,7 +118,7 @@ const uint8_t REST_INDEX = 255;
 
 // Stop-and-Wait ARQ timing
 const uint32_t ACK_TIMEOUT_MS = 50UL; // Max ms to wait for ACK before retransmitting
-const uint8_t  MAX_RETRIES    = 3u;   // Retransmission limit before skipping the note
+const uint8_t  MAX_RETRIES    = 50u;  // Retransmission limit before suspendSession()
 
 // UART configuration 
 const uint16_t BAUD_RATE = 9600;
