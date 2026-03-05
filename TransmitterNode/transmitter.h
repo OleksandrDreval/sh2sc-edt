@@ -22,9 +22,8 @@ const uint16_t DEBOUNCE_DELAY_MS = 50;   // Milliseconds a signal must be stable
 
 // Stop-and-Wait ARQ limits 
 //
-// Maximum consecutive retransmissions before declaring the receiver unreachable.
+// MAX_RETRIES is defined in protocol.h (shared with RX).
 // Prevents a runaway retry loop if RX loses power without sending FLAG_FIN.
-const uint8_t  MAX_RETRIES           = 50;    // Max consecutive retransmissions before suspendSession()
 const uint32_t RECONNECT_INTERVAL_MS = 2000;  // Auto-reconnect ping interval (ms)
 
 // Finite State Machine states 
