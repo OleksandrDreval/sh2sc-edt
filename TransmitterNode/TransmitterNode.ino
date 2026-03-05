@@ -387,6 +387,32 @@ void generateEntropyPool(uint8_t* outputSeed) {
   }
 }
 
+// abortSession — emergency teardown when the receiver becomes unreachable.
+//
+// Called when retryCount reaches MAX_RETRIES in any WAITING_* state.
+// Erases the session nonce from RAM (forward-secrecy), resets all counters,
+// and returns to IDLE so the operator can press the button again.
+// The blocking delay(2000) is intentional — an abort is an exceptional event
+// and the 2-second hold lets the operator read the error before IDLE restores.
+void abortSession() {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("RX LOST! ABORT");
+  lcd.setCursor(0, 1);
+  lcd.print("RTY:");
+  lcd.print(retryCount);
+
+  // Erase key material so captured ciphertext cannot be replayed after restart.
+  memset(s_sessionNonce, 0, HELLO_NONCE_SIZE);
+  melodyIndex  = 0;
+  seqNum       = 0;
+  retryCount   = 0;
+  currentState = TxState::IDLE;
+
+  delay(2000);  // Hold error message so operator can read it.
+  updateTxDisplay(currentState, seqNum, retryCount);
+}
+
  
 // ARDUINO ENTRY POINTS
  
@@ -459,16 +485,24 @@ void tx_loop() {
           // RX UART FIFO has time to drain, and a new nonce is generated to
           // keep the replay window always moving forward.
           retryCount++;
-          delay(10);
-          currentState = TxState::SENDING_HELLO;
-          updateTxDisplay(currentState, seqNum, retryCount);
+          if (retryCount >= MAX_RETRIES) {
+            abortSession();
+          } else {
+            delay(10);
+            currentState = TxState::SENDING_HELLO;
+            updateTxDisplay(currentState, seqNum, retryCount);
+          }
         }
 
       } else if ((millis() - ackWaitStart) >= ACK_TIMEOUT_MS) {
         // Timeout: HELLO was lost or RX FIFO was overwhelmed — retransmit.
         retryCount++;
-        currentState = TxState::SENDING_HELLO;
-        updateTxDisplay(currentState, seqNum, retryCount);
+        if (retryCount >= MAX_RETRIES) {
+          abortSession();
+        } else {
+          currentState = TxState::SENDING_HELLO;
+          updateTxDisplay(currentState, seqNum, retryCount);
+        }
       }
       break;
 
@@ -511,10 +545,14 @@ void tx_loop() {
           // delay(10) gives the RX UART buffer time to drain residual noise bytes
           // before the retransmission arrives, reducing cascading NACK storms.
           retryCount++;
-          delay(10);
-          formAndSendPacket(pendingNoteIndex, pendingNoteDuration);
-          ackWaitStart = millis();
-          updateTxDisplay(currentState, seqNum, retryCount);
+          if (retryCount >= MAX_RETRIES) {
+            abortSession();
+          } else {
+            delay(10);
+            formAndSendPacket(pendingNoteIndex, pendingNoteDuration);
+            ackWaitStart = millis();
+            updateTxDisplay(currentState, seqNum, retryCount);
+          }
         }
         // Any other byte (noise on the feedback line) is silently ignored.
 
@@ -522,9 +560,13 @@ void tx_loop() {
         // Timeout: no response within 50 ms → channel or ACK was lost.
         // Retransmit the SAME packet with the SAME seqNum.
         retryCount++;
-        formAndSendPacket(pendingNoteIndex, pendingNoteDuration);
-        ackWaitStart = millis();
-        updateTxDisplay(currentState, seqNum, retryCount);
+        if (retryCount >= MAX_RETRIES) {
+          abortSession();
+        } else {
+          formAndSendPacket(pendingNoteIndex, pendingNoteDuration);
+          ackWaitStart = millis();
+          updateTxDisplay(currentState, seqNum, retryCount);
+        }
       }
       break;
 
@@ -575,17 +617,25 @@ void tx_loop() {
         } else if (response == NACK_BYTE) {
           // RX rejected the FIN (MAC failure) — retransmit after a brief drain.
           retryCount++;
-          delay(10);
-          currentState = TxState::SENDING_FIN;
-          updateTxDisplay(currentState, seqNum, retryCount);
+          if (retryCount >= MAX_RETRIES) {
+            abortSession();
+          } else {
+            delay(10);
+            currentState = TxState::SENDING_FIN;
+            updateTxDisplay(currentState, seqNum, retryCount);
+          }
         }
         // Any other byte — noise on the feedback line, stay in WAITING_FIN_ACK.
 
       } else if ((millis() - ackWaitStart) >= ACK_TIMEOUT_MS) {
         // Timeout: ACK lost in transit — retransmit the FIN packet.
         retryCount++;
-        currentState = TxState::SENDING_FIN;
-        updateTxDisplay(currentState, seqNum, retryCount);
+        if (retryCount >= MAX_RETRIES) {
+          abortSession();
+        } else {
+          currentState = TxState::SENDING_FIN;
+          updateTxDisplay(currentState, seqNum, retryCount);
+        }
       }
       break;
   }

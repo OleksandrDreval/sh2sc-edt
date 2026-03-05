@@ -20,6 +20,12 @@ const uint8_t  TX_LCD_ROWS          = 2;
 // Button debounce 
 const uint16_t DEBOUNCE_DELAY_MS = 50;   // Milliseconds a signal must be stable
 
+// Stop-and-Wait ARQ limits 
+//
+// Maximum consecutive retransmissions before declaring the receiver unreachable.
+// Prevents a runaway retry loop if RX loses power without sending FLAG_FIN.
+const uint8_t  MAX_RETRIES = 50;         // Max consecutive retransmissions before abortSession()
+
 // Finite State Machine states 
 // The entire TX logic is driven by this FSM; no blocking delays allowed.
 enum class TxState : uint8_t {
