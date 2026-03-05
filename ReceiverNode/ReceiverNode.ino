@@ -91,6 +91,13 @@ static uint32_t errorDisplayStart     = 0;
 const uint16_t  RX_PARSER_TIMEOUT_MS = 20;
 static uint32_t rxLastByteMs         = 0;
 
+// Session watchdog: if the transmitter disappears without sending FLAG_FIN,
+// the session would remain locked forever (s_sessionActive = true with a live
+// key in RAM).  Resetting after SESSION_TIMEOUT_MS of complete silence
+// prevents that deadlock without any TX-side cooperation.
+const uint32_t  SESSION_TIMEOUT_MS       = 5000;  // 5 s of absolute silence
+static uint32_t last_valid_packet_time   = 0;     // Updated on every accepted packet
+
 // Display state (for LCD only — independent of the parser FSM).
 static RxState currentState = RxState::WAITING_SYNC_1;
 
@@ -274,6 +281,9 @@ void processHelloBody() {
   // Without this ACK, TX's WAITING_HELLO_ACK state would always time out
   // and keep retransmitting a new HelloPacket on every cycle.
   Serial.write(ACK_BYTE);
+
+  // Arm the session watchdog: start the silence timer from this moment.
+  last_valid_packet_time = millis();
 }
 
 // authenticateAndPlay — full ChaCha20-Poly1305 v2 RX pipeline.
@@ -358,6 +368,9 @@ void authenticateAndPlay(const DataPacket* pkt) {
 
   currentState = RxState::EXECUTING_ACTION;
   updateRxDisplay(currentState, seqNum, true);
+
+  // Kick the session watchdog — TX is alive and well.
+  last_valid_packet_time = millis();
 }
 
 // processFinPacket — authenticate and process a FLAG_FIN session-teardown packet.
@@ -605,6 +618,23 @@ void rx_loop() {
       currentState = RxState::WAITING_SYNC_1;
       updateRxDisplay(currentState, 0, false);
     }
+  }
+
+  // SESSION WATCHDOG — deadlock prevention against sudden TX power loss.
+  // If the transmitter disappears without sending FLAG_FIN, s_sessionActive
+  // would stay true forever, blocking any future HELLO handshake.  After
+  // SESSION_TIMEOUT_MS of absolute silence, the session is torn down safely.
+  if (s_sessionActive &&
+      (millis() - last_valid_packet_time) > SESSION_TIMEOUT_MS) {
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("TIMEOUT! DROP");
+    lcd.setCursor(0, 1);
+    lcd.print("Session reset");
+    // Erase key material so a replay of captured ciphertext cannot succeed.
+    memset(s_sessionNonce, 0, HELLO_NONCE_SIZE);
+    s_sessionActive = false;
+    resetParser();
   }
 
   // Non-blocking UART reading.
