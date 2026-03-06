@@ -93,9 +93,10 @@ static uint32_t rxLastByteMs         = 0;
 
 // Session watchdog: if the transmitter disappears without sending FLAG_FIN,
 // the session would remain locked forever (s_sessionActive = true with a live
-// key in RAM).  Resetting after SESSION_TIMEOUT_MS of complete silence
-// prevents that deadlock without any TX-side cooperation.
-const uint32_t  SESSION_TIMEOUT_MS       = 5000;  // 5 s of absolute silence
+// key in RAM).  The dynamic watchdog prevents that deadlock by waiting
+// (last_note_duration + NETWORK_GRACE_PERIOD_MS) before tearing the session down.
+const uint32_t  NETWORK_GRACE_PERIOD_MS  = 3000;  // 3 s to absorb retries & ACK RTT
+static uint32_t current_timeout_limit    = 5000;  // Default 5 s until first DATA arrives
 static uint32_t last_valid_packet_time   = 0;     // Updated on every accepted packet
 
 // Display state (for LCD only — independent of the parser FSM).
@@ -283,6 +284,8 @@ void processHelloBody() {
   Serial.write(ACK_BYTE);
 
   // Arm the session watchdog: start the silence timer from this moment.
+  // Timeout is capped at 5 s until the first DATA packet reveals note duration.
+  current_timeout_limit  = 5000;
   last_valid_packet_time = millis();
 }
 
@@ -369,7 +372,10 @@ void authenticateAndPlay(const DataPacket* pkt) {
   currentState = RxState::EXECUTING_ACTION;
   updateRxDisplay(currentState, seqNum, true);
 
-  // Kick the session watchdog — TX is alive and well.
+  // Dynamic watchdog: extend timeout by note duration + network grace period.
+  // Prevents a legitimate long note (or the silence after it) from triggering
+  // a false session reset before the next packet arrives.
+  current_timeout_limit  = static_cast<uint32_t>(durationMs) + NETWORK_GRACE_PERIOD_MS;
   last_valid_packet_time = millis();
 }
 
@@ -622,10 +628,11 @@ void rx_loop() {
 
   // SESSION WATCHDOG — deadlock prevention against sudden TX power loss.
   // If the transmitter disappears without sending FLAG_FIN, s_sessionActive
-  // would stay true forever, blocking any future HELLO handshake.  After
-  // SESSION_TIMEOUT_MS of absolute silence, the session is torn down safely.
+  // would stay true forever, blocking any future HELLO handshake.
+  // current_timeout_limit is set dynamically: 5 s for the initial wait,
+  // then (last_note_duration + NETWORK_GRACE_PERIOD_MS) for every subsequent gap.
   if (s_sessionActive &&
-      (millis() - last_valid_packet_time) > SESSION_TIMEOUT_MS) {
+      (millis() - last_valid_packet_time) > current_timeout_limit) {
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print("TIMEOUT! DROP");
