@@ -255,7 +255,7 @@ stateDiagram-v2
 
 | Library                        | Purpose                                | Source               |
 |--------------------------------|----------------------------------------|----------------------|
-| `Arduino Cryptography Library`   | ChaCha20-Poly1305 AEAD                 | [Rhys Weatherley](https://github.com/rweather/arduinolibs) |
+| `Arduino Cryptography Library` (Crypto)  | ChaCha20-Poly1305 AEAD                 | [Rhys Weatherley](https://github.com/rweather/arduinolibs) |
 | `LiquidCrystal_AIP31068`   | I2C LCD driver for Aip31068 controller | [Andriy Golovnya](https://github.com/red-scorp/LiquidCrystal_AIP31068) |
 
 ### Build Environment
