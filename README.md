@@ -195,6 +195,34 @@ WAITING_SYNC_1 -> WAITING_SYNC_2 -> WAITING_FOR_TYPE
 
 ---
 
+## Hardware and Environment
+
+### Target Hardware
+
+| Component          | Specification                                                     |
+|--------------------|-------------------------------------------------------------------|
+| Microcontrollers   | 2x Arduino Nano (ATmega328P, 16 MHz, 2 KB SRAM, 32 KB Flash)     |
+| Displays           | 2x Aip31068 I2C LCD 16x2, address `0x3E`, pins A4/A5             |
+| Buzzer             | 1x Piezo speaker on PWM pin 9 (Node B only)                      |
+| CSPRNG source      | Hardware ring oscillator on INT0 (pin 2, both nodes)             |
+| Noise injector     | XOR gate + Pulse Generator (1 kHz, 15%) + AND gate + Switch      |
+| Monitoring         | Multi-channel oscilloscope, Time/Div ~200 us                     |
+
+### Required Libraries
+
+| Library                        | Purpose                                | Source               |
+|--------------------------------|----------------------------------------|----------------------|
+| `ChaChaPoly` (Arduino Crypto)  | ChaCha20-Poly1305 AEAD                 | Rhys Weatherley      |
+| `LiquidCrystal_AIP31068_I2C`   | I2C LCD driver for Aip31068 controller | Arduino Library Manager |
+
+### Build Environment
+
+- **Arduino IDE** 2.x with AVR board support package.
+- **SimulIDE** 1.1.0 (or later) for circuit simulation and real-time validation.
+- Compiler: `avr-g++` with C++11 (`-std=gnu++11`).
+
+---
+
 ## Repository Structure
 
 ```
