@@ -119,6 +119,26 @@ Only the first 8 bytes of the 16-byte Poly1305 tag are transmitted (`TRUNCATED_M
 Verification uses `memcmp(expectedMac, pkt->mac, 8)`. Tag truncation is a deliberate trade-off
 between wire overhead and security margin, acceptable for a 16-bit AVR channel.
 
+### Secure Key Material Destruction
+
+`MASTER_PSK` is compiled into both nodes and never transmitted. `s_sessionNonce` is the only
+runtime secret and is zeroed at every session boundary:
+
+```cpp
+memset(s_sessionNonce, 0x00, HELLO_NONCE_SIZE); // HELLO_NONCE_SIZE = 12
+```
+
+This call is made unconditionally in four locations:
+
+| Location                         | Trigger                                      |
+|----------------------------------|----------------------------------------------|
+| TX `suspendSession()`            | `MAX_RETRIES` exhausted in any `WAITING_*` state |
+| TX `WAITING_FIN_ACK` success     | `FLAG_FIN` acknowledged by RX                |
+| RX `processFinPacket()` MAC OK   | Authenticated session close                  |
+| RX Dynamic Watchdog timeout      | TX disappeared without sending `FLAG_FIN`    |
+
+Key material is **never** logged to `Serial`, LCD, or any output channel.
+
 ---
 
 ## Repository Structure
