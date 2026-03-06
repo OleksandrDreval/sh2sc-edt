@@ -160,15 +160,81 @@ Key material is **never** logged to `Serial`, LCD, or any output channel.
 
 ### Transmitter — `TxState` (9 states)
 
-![C2P-ARQ Transmitter FSM — TxState](docs/diagram-2.png)
+```mermaid
+stateDiagram-v2
+    [*] --> IDLE
+
+    IDLE --> SENDING_HELLO : button press
+
+    SENDING_HELLO --> WAITING_HELLO_ACK : HelloPacket sent
+
+    WAITING_HELLO_ACK --> SENDING : ACK received
+    WAITING_HELLO_ACK --> RECONNECTING : NACK / timeout × MAX_RETRIES\nsuspendSession()
+
+    SENDING --> WAITING_ACK : DataPacket sent
+
+    WAITING_ACK --> WAIT_BETWEEN_NOTES : ACK received
+    WAITING_ACK --> RECONNECTING : NACK / timeout × MAX_RETRIES\nsuspendSession()
+
+    RECONNECTING --> SENDING_HELLO : HelloPacket ACK received\n(auto-reconnect every 2 s)
+
+    WAIT_BETWEEN_NOTES --> SENDING : gap elapsed, notes remain
+    WAIT_BETWEEN_NOTES --> SENDING_FIN : all notes sent
+
+    SENDING_FIN --> WAITING_FIN_ACK : FinPacket sent
+
+    WAITING_FIN_ACK --> IDLE : ACK received\nmemset(s_sessionNonce)
+    WAITING_FIN_ACK --> RECONNECTING : NACK / timeout × MAX_RETRIES\nsuspendSession()
+```
 
 ### Receiver — byte-level `ParseState`
 
-![C2P-ARQ Receiver byte-level ParseState](docs/diagram-1.png)
+```mermaid
+stateDiagram-v2
+    [*] --> WAIT_AA
+
+    WAIT_AA --> WAIT_55 : byte == 0xAA
+    WAIT_AA --> WAIT_AA : byte != 0xAA
+
+    WAIT_55 --> READ_TYPE : byte == 0x55
+    WAIT_55 --> WAIT_AA : byte != 0x55
+
+    READ_TYPE --> READ_PAYLOAD : flags byte read\n(FLAG_SYN / FLAG_DAT / FLAG_FIN)
+    READ_TYPE --> WAIT_AA : invalid byte
+
+    READ_PAYLOAD --> WAIT_AA : MAC OK → ACK, process packet
+    READ_PAYLOAD --> WAIT_AA : MAC FAIL → resetParser() + NACK\n(drains UART FIFO)
+```
 
 ### Receiver display / watchdog — `RxState`
 
-![C2P-ARQ Receiver RxState with Dynamic Watchdog](docs/diagram-3.png)
+```mermaid
+stateDiagram-v2
+    [*] --> WAITING_SYNC_1
+
+    WAITING_SYNC_1 --> WAITING_SYNC_2 : byte = 0xAA
+    WAITING_SYNC_2 --> WAITING_FOR_TYPE : byte = 0x55
+    WAITING_SYNC_2 --> WAITING_SYNC_1 : byte ≠ 0x55
+
+    WAITING_FOR_TYPE --> READING_HELLO : FLAG_SYN (0x01)
+    WAITING_FOR_TYPE --> READING_DATA : FLAG_DAT / FLAG_FIN
+
+    READING_HELLO --> GOT_HELLO : nonce[12] complete
+    READING_DATA --> GOT_DATA : payload[4] + mac[8] complete
+
+    GOT_HELLO --> WAITING_SYNC_1 : processHelloBody() · ACK · Watchdog armed (5 s)
+
+    GOT_DATA --> EXECUTING_ACTION : MAC pass
+    GOT_DATA --> WAITING_SYNC_1 : MAC fail · NACK · resetParser()
+
+    EXECUTING_ACTION --> WAITING_SYNC_1 : ACK · startNote() · Watchdog = durationMs + 3 s
+
+    state "Dynamic Watchdog timeout\nmemset(s_sessionNonce)\ns_sessionActive = false" as WDT
+    WAITING_FOR_TYPE --> WDT
+    READING_DATA     --> WDT
+    EXECUTING_ACTION --> WDT
+    WDT --> WAITING_SYNC_1
+```
 
 ---
 
