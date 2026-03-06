@@ -160,38 +160,15 @@ Key material is **never** logged to `Serial`, LCD, or any output channel.
 
 ### Transmitter — `TxState` (9 states)
 
-```
-IDLE
-  |  (button press)
-SENDING_HELLO ---------> WAITING_HELLO_ACK
-                              |  (ACK)     |  (NACK/timeout x MAX_RETRIES)
-                           SENDING      suspendSession() -> RECONNECTING
-                              |  (packet)          |  (HelloPacket every 2 s)
-                          WAITING_ACK <------------+  (ACK received)
-                     (ACK) |     | (NACK/timeout x MAX_RETRIES)
-             WAIT_BETWEEN_NOTES  suspendSession() -> RECONNECTING
-                              |  (gap elapsed, notes remain -> SENDING)
-                              |  (all notes sent)
-                          SENDING_FIN -> WAITING_FIN_ACK
-                                              |  (ACK: memset nonce -> IDLE)
-```
+![C2P-ARQ Transmitter FSM — TxState](docs/diagram-2.png)
 
 ### Receiver — byte-level `ParseState`
 
-```
-WAIT_AA -> WAIT_55 -> READ_TYPE -> READ_PAYLOAD
-  ^                                    |
-  +---------- resetParser() ----------+
-              (MAC fail | parser timeout)
-```
+![C2P-ARQ Receiver byte-level ParseState](docs/diagram-1.png)
 
 ### Receiver display / watchdog — `RxState`
 
-```
-WAITING_SYNC_1 -> WAITING_SYNC_2 -> WAITING_FOR_TYPE
-  -> READING_HELLO -> GOT_HELLO
-  -> READING_DATA  -> GOT_DATA -> EXECUTING_ACTION
-```
+![C2P-ARQ Receiver RxState with Dynamic Watchdog](docs/diagram-3.png)
 
 ---
 
