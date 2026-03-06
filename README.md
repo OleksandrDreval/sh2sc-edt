@@ -106,7 +106,7 @@ timeout, draining the FIFO and resetting the byte-level FSM to `WAIT_AA`.
 
 ### Authenticated Encryption Pipeline
 
-Both nodes use the `ChaChaPoly` library (Rhys Weatherley, Arduino Crypto). The pipeline per
+Both nodes use the [`ChaChaPoly` library](https://github.com/rweather/arduinolibs) (Rhys Weatherley, Arduino Crypto). The pipeline per
 packet is identical on TX and RX:
 
 ```
@@ -189,7 +189,7 @@ Key material is **never** logged to `Serial`, LCD, or any output channel.
 
 | Library                        | Purpose                                | Source               |
 |--------------------------------|----------------------------------------|----------------------|
-| `ChaChaPoly` (Arduino Crypto)  | ChaCha20-Poly1305 AEAD                 | Rhys Weatherley      |
+| `ChaChaPoly` (Arduino Crypto)  | ChaCha20-Poly1305 AEAD                 | [Rhys Weatherley](https://github.com/rweather/arduinolibs) |
 | `LiquidCrystal_AIP31068_I2C`   | I2C LCD driver for Aip31068 controller | Arduino Library Manager |
 
 ### Build Environment
