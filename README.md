@@ -72,6 +72,16 @@ For `FLAG_FIN` packets, `payload` is encrypted zeros. The RX pipeline **must** c
 `decrypt()` into a `discardBuf` before `computeTag()` to advance the Poly1305 accumulator
 correctly; skipping `decrypt()` produces an incorrect expected tag and results in a false NACK.
 
+### ARQ Parameters
+
+| Constant                  | Value   | Description                                             |
+|---------------------------|---------|---------------------------------------------------------|
+| `ACK_TIMEOUT_MS`          | 50 ms   | Maximum wait for ACK before retransmission              |
+| `MAX_RETRIES`             | 50      | Consecutive retransmissions before `suspendSession()`   |
+| `RECONNECT_INTERVAL_MS`   | 2000 ms | HelloPacket broadcast interval in `RECONNECTING` state  |
+| `NETWORK_GRACE_PERIOD_MS` | 3000 ms | Added to note duration for Dynamic Watchdog timeout     |
+| `BAUD_RATE`               | 9600    | UART speed (8N1)                                        |
+
 ---
 
 ## Key Constants Reference
