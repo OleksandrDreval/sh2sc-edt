@@ -47,6 +47,33 @@ within the 2 KB SRAM budget of the ATmega328P.
 
 ---
 
+## Protocol Specification: C2P-ARQ
+
+### Wire Format
+
+All frames are preceded by a two-byte sync preamble (`0xAA 0x55`). The `flags` byte uses
+bitmask matching (`&`), providing noise resilience against single-bit errors.
+
+#### DataPacket (FLAG_DAT / FLAG_FIN) — 17 bytes on wire
+
+| Field         | Size    | Value             | Description                                        |
+|---------------|---------|-------------------|----------------------------------------------------|
+| SYNC1         | 1 byte  | `0xAA`            | Preamble byte 1                                    |
+| SYNC2         | 1 byte  | `0x55`            | Preamble byte 2                                    |
+| `flags`       | 1 byte  | `0x02` / `0x04`   | `FLAG_DAT` or `FLAG_FIN` — **AAD, not encrypted**  |
+| `seq_num`     | 2 bytes | `uint16_t` LE     | Packet sequence number — **AAD, not encrypted**    |
+| `payload[4]`  | 4 bytes | ChaCha20 ciphertext | Encrypted `uint16_t note_index` + `uint16_t duration_ms` |
+| `mac[8]`      | 8 bytes | Poly1305 truncated | First 8 bytes of the full 16-byte Poly1305 tag    |
+
+The 3-byte AAD (`flags` + `seq_lo` + `seq_hi`) is authenticated but not encrypted. Any
+bit-flip in these fields causes MAC verification to fail.
+
+For `FLAG_FIN` packets, `payload` is encrypted zeros. The RX pipeline **must** call
+`decrypt()` into a `discardBuf` before `computeTag()` to advance the Poly1305 accumulator
+correctly; skipping `decrypt()` produces an incorrect expected tag and results in a false NACK.
+
+---
+
 ## Key Constants Reference
 
 | Constant              | Value    | Defined in    | Description                          |
