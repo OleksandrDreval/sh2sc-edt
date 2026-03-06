@@ -109,10 +109,16 @@ timeout, draining the FIFO and resetting the byte-level FSM to `WAIT_AA`.
 Both nodes use the [`ChaChaPoly` library](https://github.com/rweather/arduinolibs) (Rhys Weatherley, Arduino Crypto). The pipeline per
 packet is identical on TX and RX:
 
-```
-clear() -> setKey(MASTER_PSK, 32) -> setIV(packetNonce, 12)
-        -> addAuthData(aad, 3)    -> encrypt()/decrypt(payload, 4)
-        -> computeTag(mac, 16)
+```mermaid
+flowchart LR
+    A([clear]) --> B([setKey<br/>MASTER_PSK, 32])
+    B --> C([setIV<br/>packetNonce, 12])
+    C --> D([addAuthData<br/>aad, 3 bytes])
+    D --> E([encrypt / decrypt<br/>payload, 4 bytes])
+    E --> F([computeTag<br/>mac, 16 bytes])
+    F --> G{"memcmp<br/>mac[0..7]"}
+    G -->|match| H([ACK<br/>process data])
+    G -->|mismatch| I([NACK<br/>resetParser])
 ```
 
 Only the first 8 bytes of the 16-byte Poly1305 tag are transmitted (`TRUNCATED_MAC_SIZE = 8`).
