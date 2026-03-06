@@ -54,6 +54,15 @@ within the 2 KB SRAM budget of the ATmega328P.
 All frames are preceded by a two-byte sync preamble (`0xAA 0x55`). The `flags` byte uses
 bitmask matching (`&`), providing noise resilience against single-bit errors.
 
+#### HelloPacket — 15 bytes on wire
+
+| Field      | Size     | Value      | Description                              |
+|------------|----------|------------|------------------------------------------|
+| SYNC1      | 1 byte   | `0xAA`     | Preamble byte 1                          |
+| SYNC2      | 1 byte   | `0x55`     | Preamble byte 2                          |
+| `flags`    | 1 byte   | `FLAG_SYN = 0x01` | Session open identifier           |
+| `nonce[12]`| 12 bytes | CSPRNG     | 96-bit IETF ChaCha20 session nonce       |
+
 #### DataPacket (FLAG_DAT / FLAG_FIN) — 17 bytes on wire
 
 | Field         | Size    | Value             | Description                                        |
