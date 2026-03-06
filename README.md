@@ -20,3 +20,14 @@ SimulIDE. Dynamic memory allocation is architecturally prohibited; the entire fi
 within the 2 KB SRAM budget of the ATmega328P.
 
 ---
+
+## Academic Context
+
+Developed as project for the discipline **"Computer Systems Architecture"**. The system
+demonstrates that a resource-constrained 8-bit AVR microcontroller can implement
+industry-grade cryptographic authentication (AEAD), a stateful session protocol, and
+application-layer fault recovery within a 2 KB SRAM budget. The SimulIDE noise injector
+(XOR gate + 1 kHz pulse generator) provides reproducible channel corruption for validating
+all five fault-tolerance scenarios: single-burst corruption, sustained jamming (Self-Healing
+proof), stale FIFO poisoning, Dynamic Watchdog teardown, and FLAG_FIN corruption under noise.
+
