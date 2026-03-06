@@ -47,6 +47,29 @@ within the 2 KB SRAM budget of the ATmega328P.
 
 ---
 
+## Key Constants Reference
+
+| Constant              | Value    | Defined in    | Description                          |
+|-----------------------|----------|---------------|--------------------------------------|
+| `FLAG_SYN`            | `0x01`   | `protocol.h`  | Session open frame flag              |
+| `FLAG_DAT`            | `0x02`   | `protocol.h`  | Data frame flag                      |
+| `FLAG_FIN`            | `0x04`   | `protocol.h`  | Session close frame flag             |
+| `ACK_BYTE`            | `0x06`   | `protocol.h`  | Positive acknowledgement             |
+| `NACK_BYTE`           | `0x15`   | `protocol.h`  | Negative acknowledgement             |
+| `SYNC_BYTE_1`         | `0xAA`   | `protocol.h`  | Frame preamble byte 1                |
+| `SYNC_BYTE_2`         | `0x55`   | `protocol.h`  | Frame preamble byte 2                |
+| `HELLO_NONCE_SIZE`    | `12`     | `protocol.h`  | ChaCha20 IETF nonce length (bytes)   |
+| `TRUNCATED_MAC_SIZE`  | `8`      | `protocol.h`  | Transmitted Poly1305 tag length      |
+| `DATA_PAYLOAD_SIZE`   | `4`      | `protocol.h`  | Encrypted payload length (bytes)     |
+| `REST_INDEX`          | `255`    | `protocol.h`  | Sentinel index for silence/pause     |
+| `NOTE_DICT_SIZE`      | `21`     | `receiver.h`  | Size of universal frequency table    |
+| `MAX_RETRIES`         | `50`     | `protocol.h`  | ARQ retransmission limit             |
+| `ACK_TIMEOUT_MS`      | `50`     | `protocol.h`  | ACK wait window (ms)                 |
+| `RECONNECT_INTERVAL_MS` | `2000` | `transmitter.h` | HelloPacket broadcast interval     |
+| `NETWORK_GRACE_PERIOD_MS` | `3000` | `receiver.h` | Watchdog grace period added to note duration |
+
+---
+
 ## Academic Context
 
 Developed as project for the discipline **"Computer Systems Architecture"**. The system
