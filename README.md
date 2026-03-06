@@ -102,6 +102,38 @@ timeout, draining the FIFO and resetting the byte-level FSM to `WAIT_AA`.
 
 ---
 
+## Repository Structure
+
+```
+sh2sc-edt/
+|
++-- TransmitterNode/
+|   +-- TransmitterNode.ino   Entry point: setup(), loop(), button debounce
+|   +-- transmitter.h         TxState FSM, sendHelloPacket(), sendPacket(),
+|   |                         sendFinPacket(), suspendSession(), drainRxFifo()
+|   +-- protocol.h            Shared structs (HelloPacket, DataPacket), flag
+|   |                         constants, MASTER_PSK, timing constants
+|   +-- csprng.h              ChaCha20-based CSPRNG, hardware entropy pool,
+|   |                         64-byte keystream cache
+|   +-- melody.h              PROGMEM melody arrays (note indices, durations)
+|
++-- ReceiverNode/
+|   +-- ReceiverNode.ino      Entry point: setup(), loop(), note timer, watchdog
+|   +-- receiver.h            RxState FSM, processReceivedByte(), ParseState,
+|   |                         authenticateAndPlay(), processFinPacket(),
+|   |                         resetParser(), Dynamic Watchdog
+|   +-- protocol.h            Shared structs and constants (identical to TX)
+|   +-- csprng.h              CSPRNG (RX variant, no button entropy source)
+|
++-- docs/
+|   +-- main.qd               Quarkdown technical documentation source
+|
++-- shsc-arq.sim1             SimulIDE circuit file (primary simulation)
++-- README.md                 This file
+```
+
+---
+
 ## Key Constants Reference
 
 | Constant              | Value    | Defined in    | Description                          |
