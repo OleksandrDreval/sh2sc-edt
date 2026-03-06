@@ -102,6 +102,25 @@ timeout, draining the FIFO and resetting the byte-level FSM to `WAIT_AA`.
 
 ---
 
+## Security Model
+
+### Authenticated Encryption Pipeline
+
+Both nodes use the `ChaChaPoly` library (Rhys Weatherley, Arduino Crypto). The pipeline per
+packet is identical on TX and RX:
+
+```
+clear() -> setKey(MASTER_PSK, 32) -> setIV(packetNonce, 12)
+        -> addAuthData(aad, 3)    -> encrypt()/decrypt(payload, 4)
+        -> computeTag(mac, 16)
+```
+
+Only the first 8 bytes of the 16-byte Poly1305 tag are transmitted (`TRUNCATED_MAC_SIZE = 8`).
+Verification uses `memcmp(expectedMac, pkt->mac, 8)`. Tag truncation is a deliberate trade-off
+between wire overhead and security margin, acceptable for a 16-bit AVR channel.
+
+---
+
 ## Repository Structure
 
 ```
