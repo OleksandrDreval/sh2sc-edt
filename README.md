@@ -190,7 +190,7 @@ Key material is **never** logged to `Serial`, LCD, or any output channel.
 | Library                        | Purpose                                | Source               |
 |--------------------------------|----------------------------------------|----------------------|
 | `ChaChaPoly` (Arduino Crypto)  | ChaCha20-Poly1305 AEAD                 | [Rhys Weatherley](https://github.com/rweather/arduinolibs) |
-| `LiquidCrystal_AIP31068_I2C`   | I2C LCD driver for Aip31068 controller | Arduino Library Manager |
+| `LiquidCrystal_AIP31068`   | I2C LCD driver for Aip31068 controller | [Andriy Golovnya](https://github.com/red-scorp/LiquidCrystal_AIP31068) |
 
 ### Build Environment
 
