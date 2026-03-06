@@ -91,6 +91,15 @@ correctly; skipping `decrypt()` produces an incorrect expected tag and results i
 | `NETWORK_GRACE_PERIOD_MS` | 3000 ms | Added to note duration for Dynamic Watchdog timeout     |
 | `BAUD_RATE`               | 9600    | UART speed (8N1)                                        |
 
+### FIFO Drain (Stale Buffer Prevention)
+
+`drainRxFifo()` is called on TX before every `sendHelloPacket()`, `sendPacket()`, and
+`sendFinPacket()`. It discards all bytes in the 64-byte hardware UART RX FIFO, preventing
+stale NACKs accumulated during a noise burst from poisoning the response to the next packet.
+
+On RX, `resetParser()` performs the symmetric operation after every MAC failure or parser
+timeout, draining the FIFO and resetting the byte-level FSM to `WAIT_AA`.
+
 ---
 
 ## Key Constants Reference
