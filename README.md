@@ -1,2 +1,2 @@
-# shsc-arq
-Simple hardware and software complex for secure data transmission with ARQ mechanism
+# sh2sc-edt
+Self-Healing Hardware and Software Complex for Encrypted Data Transmission
