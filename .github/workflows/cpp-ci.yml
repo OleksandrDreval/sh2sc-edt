@@ -113,24 +113,32 @@ jobs:
 
       # --language=c++        : treat all translation units as C++.
       # --enable=all          : enable all check categories.
-      # --suppress=missingIncludeSystem : silence false positives caused by
-      #   Arduino SDK and AVR libc headers that are not installed in this runner.
-      # --error-exitcode=1    : fail the job on any finding above the warning
-      #   severity, enforcing a hard quality gate.
+      # --suppress=missingIncludeSystem : silence false positives from Arduino SDK
+      #   and AVR libc headers (angle-bracket includes) not present in this runner.
+      # --suppress=missingInclude : silence warnings for local includes that
+      #   cppcheck cannot resolve without the Arduino toolchain installed.
+      # --suppress=unusedFunction : setup()/loop() and ISR callbacks are defined
+      #   in .h files but called from .ino files outside cppcheck's call graph.
+      # --error-exitcode=1    : fail the job on any real defect finding.
+      # find + xargs          : cppcheck only auto-discovers .c/.cpp from dirs;
+      #   .ino and .h files must be passed explicitly to avoid
+      #   "could not find or open any of the paths given".
       - name: Install cppcheck
         run: sudo apt-get install -y cppcheck
 
       - name: Run cppcheck on TransmitterNode and ReceiverNode
         run: |
-          cppcheck \
-            --language=c++ \
-            --enable=all \
-            --suppress=missingIncludeSystem \
-            --error-exitcode=1 \
-            -I ./TransmitterNode \
-            -I ./ReceiverNode \
-            ./TransmitterNode \
-            ./ReceiverNode
+          find ./TransmitterNode ./ReceiverNode \
+            \( -name "*.ino" -o -name "*.h" -o -name "*.cpp" -o -name "*.c" \) \
+            -print0 | xargs -0 cppcheck \
+              --language=c++ \
+              --enable=all \
+              --suppress=missingIncludeSystem \
+              --suppress=missingInclude \
+              --suppress=unusedFunction \
+              --error-exitcode=1 \
+              -I ./TransmitterNode \
+              -I ./ReceiverNode
 
       # --minlevel=3 : report only medium-risk (3) and above findings.
       # Levels 4-5 (high/critical) cover patterns such as buffer overflows,
