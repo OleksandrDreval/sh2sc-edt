@@ -42,12 +42,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # BINDIR forces the install script to place the binary into $HOME/bin
-      # instead of the default ./bin (relative to CWD / GITHUB_WORKSPACE).
+      # Official Arduino action — installs arduino-cli and adds it to PATH
+      # automatically, regardless of runner CWD or HOME location.
       - name: Install arduino-cli
-        run: |
-          curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR=$HOME/bin sh
-          echo "$HOME/bin" >> "$GITHUB_PATH"
+        uses: arduino/setup-arduino-cli@v2
 
       # Fetch the AVR platform index and install the arduino:avr core
       # (provides avr-g++, avr-libc, and all standard Arduino headers).
