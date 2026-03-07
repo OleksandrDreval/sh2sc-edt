@@ -21,6 +21,7 @@ on:
       - "**.c"
       - "**.h"
       - "**.hpp"
+  workflow_dispatch:
 
 permissions:
   contents: read
