@@ -111,18 +111,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # --language=c++        : treat all translation units as C++.
-      # --enable=all          : enable all check categories.
+      # --language=c++              : treat all translation units as C++.
+      # --enable=all                : enable all check categories.
       # --suppress=missingIncludeSystem : silence false positives from Arduino SDK
       #   and AVR libc headers (angle-bracket includes) not present in this runner.
-      # --suppress=missingInclude : silence warnings for local includes that
-      #   cppcheck cannot resolve without the Arduino toolchain installed.
-      # --suppress=unusedFunction : setup()/loop() and ISR callbacks are defined
-      #   in .h files but called from .ino files outside cppcheck's call graph.
-      # --error-exitcode=1    : fail the job on any real defect finding.
-      # find + xargs          : cppcheck only auto-discovers .c/.cpp from dirs;
-      #   .ino and .h files must be passed explicitly to avoid
-      #   "could not find or open any of the paths given".
+      # --suppress=unusedStructMember  : HelloPacket/DataPacket fields (flags,
+      #   nonce, seq_num, payload, mac) are accessed via reinterpret_cast in the
+      #   firmware. cppcheck analyzes each .h in isolation and cannot trace usage
+      #   across .ino compilation units, producing false positives.
+      # --suppress=unusedFunction      : setup()/loop() and ISR callbacks are
+      #   called by the Arduino runtime outside cppcheck's call graph.
+      # --error-exitcode=1          : fail the job on any real defect finding.
+      # find + xargs                : cppcheck only auto-discovers .c/.cpp from
+      #   directories; .ino and .h must be passed explicitly.
       - name: Install cppcheck
         run: sudo apt-get install -y cppcheck
 
@@ -134,7 +135,7 @@ jobs:
               --language=c++ \
               --enable=all \
               --suppress=missingIncludeSystem \
-              --suppress=missingInclude \
+              --suppress=unusedStructMember \
               --suppress=unusedFunction \
               --error-exitcode=1 \
               -I ./TransmitterNode \
