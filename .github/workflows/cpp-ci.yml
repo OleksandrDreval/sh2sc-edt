@@ -57,11 +57,18 @@ jobs:
       # C2P-ARQ display dependency: Aip31068 I2C LCD driver.
       # Cloned directly into the default Arduino libraries directory so that
       # arduino-cli resolves the #include <LiquidCrystal_AIP31068_I2C.h> header.
-      - name: Install LiquidCrystal_AIP31068 library
+      # SoftSPIB is a required transitive dependency: LiquidCrystal_AIP31068
+      # ships an SPI variant (LiquidCrystal_AIP31068_SPI.cpp) that includes
+      # <SoftSPIB.h>. arduino-cli compiles every .cpp in the library directory,
+      # so SoftSPIB must be present even though this project uses only I2C.
+      - name: Install LiquidCrystal_AIP31068 library and SoftSPIB dependency
         run: |
           git clone --depth 1 \
             https://github.com/red-scorp/LiquidCrystal_AIP31068.git \
             ~/Arduino/libraries/LiquidCrystal_AIP31068
+          git clone --depth 1 \
+            https://github.com/red-scorp/SoftSPIB.git \
+            ~/Arduino/libraries/SoftSPIB
 
       # C2P-ARQ cryptographic dependency: Rhys Weatherley's Arduino Crypto.
       # The library resides in the libraries/Crypto subdirectory of the upstream
