@@ -1,0 +1,140 @@
+# CI pipeline for SH2SC-EDT — C++ firmware compilation and static analysis.
+# Targets: TransmitterNode (Node A) and ReceiverNode (Node B), arduino:avr:nano.
+# Protocol: C2P-ARQ (ChaCha20-Poly1305 AEAD over UART, Stop-and-Wait ARQ).
+
+name: CI — C++ firmware build and static analysis (SH2SC-EDT)
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "**.ino"
+      - "**.cpp"
+      - "**.c"
+      - "**.h"
+      - "**.hpp"
+  pull_request:
+    branches: ["**"]
+    paths:
+      - "**.ino"
+      - "**.cpp"
+      - "**.c"
+      - "**.h"
+      - "**.hpp"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cpp-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Job 1: build
+  # Installs arduino-cli, the AVR core, and all required third-party libraries,
+  # then compiles both firmware nodes. All subsequent jobs depend on this one.
+  build:
+    name: Compile (arduino-cli / arduino:avr:nano)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # arduino-cli binary is placed into $HOME/bin by the official install script.
+      - name: Install arduino-cli
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+      # Fetch the AVR platform index and install the arduino:avr core
+      # (provides avr-g++, avr-libc, and all standard Arduino headers).
+      - name: Install arduino:avr platform
+        run: |
+          arduino-cli core update-index
+          arduino-cli core install arduino:avr
+
+      # C2P-ARQ display dependency: Aip31068 I2C LCD driver.
+      # Cloned directly into the default Arduino libraries directory so that
+      # arduino-cli resolves the #include <LiquidCrystal_AIP31068_I2C.h> header.
+      - name: Install LiquidCrystal_AIP31068 library
+        run: |
+          git clone --depth 1 \
+            https://github.com/red-scorp/LiquidCrystal_AIP31068.git \
+            ~/Arduino/libraries/LiquidCrystal_AIP31068
+
+      # C2P-ARQ cryptographic dependency: Rhys Weatherley's Arduino Crypto.
+      # The library resides in the libraries/Crypto subdirectory of the upstream
+      # repo. Only this subdirectory is copied so arduino-cli sees a single,
+      # correctly named library root (~/Arduino/libraries/Crypto).
+      - name: Install Arduino Crypto library (ChaChaPoly / Poly1305)
+        run: |
+          git clone --depth 1 \
+            https://github.com/rweather/arduinolibs.git \
+            /tmp/arduinolibs
+          cp -r /tmp/arduinolibs/libraries/Crypto ~/Arduino/libraries/Crypto
+
+      # Compile Node A — Transmitter ("The Conductor").
+      # Drives the full C2P-ARQ session lifecycle: SYN -> DAT -> FIN.
+      - name: Compile TransmitterNode
+        run: |
+          arduino-cli compile \
+            --fqbn arduino:avr:nano \
+            --warnings all \
+            ./TransmitterNode
+
+      # Compile Node B — Receiver ("The Synthesizer").
+      # Implements the byte-level parser FSM and the Dynamic Smart Watchdog.
+      - name: Compile ReceiverNode
+        run: |
+          arduino-cli compile \
+            --fqbn arduino:avr:nano \
+            --warnings all \
+            ./ReceiverNode
+
+  # Job 2: analyze
+  # Runs only after a successful build. Executes two independent static analysis
+  # passes: cppcheck (logic/safety) and flawfinder (security).
+  analyze:
+    name: Static Analysis (cppcheck + flawfinder)
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # --language=c++        : treat all translation units as C++.
+      # --enable=all          : enable all check categories.
+      # --suppress=missingIncludeSystem : silence false positives caused by
+      #   Arduino SDK and AVR libc headers that are not installed in this runner.
+      # --error-exitcode=1    : fail the job on any finding above the warning
+      #   severity, enforcing a hard quality gate.
+      - name: Install cppcheck
+        run: sudo apt-get install -y cppcheck
+
+      - name: Run cppcheck on TransmitterNode and ReceiverNode
+        run: |
+          cppcheck \
+            --language=c++ \
+            --enable=all \
+            --suppress=missingIncludeSystem \
+            --error-exitcode=1 \
+            -I ./TransmitterNode \
+            -I ./ReceiverNode \
+            ./TransmitterNode \
+            ./ReceiverNode
+
+      # --minlevel=3 : report only medium-risk (3) and above findings.
+      # Levels 4-5 (high/critical) cover patterns such as buffer overflows,
+      # format-string injection, and unsafe memory operations — all relevant
+      # to the AVR 2 KB SRAM constraint of SH2SC-EDT.
+      - name: Install flawfinder
+        run: pip install flawfinder
+
+      - name: Run flawfinder on TransmitterNode and ReceiverNode
+        run: |
+          flawfinder \
+            --minlevel=3 \
+            ./TransmitterNode \
+            ./ReceiverNode
