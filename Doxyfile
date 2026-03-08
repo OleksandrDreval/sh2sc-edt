@@ -27,6 +27,16 @@ HTML_OUTPUT            = html
 HTML_FILE_EXTENSION    = .html
 HTML_DYNAMIC_SECTIONS  = YES
 
+# doxygen-awesome-css theme (git submodule at docs/doxygen-awesome-css/).
+# Install submodule: git submodule add https://github.com/jothepro/doxygen-awesome-css.git docs/doxygen-awesome-css
+HTML_EXTRA_STYLESHEET  = docs/doxygen-awesome-css/doxygen-awesome.css \
+                         docs/doxygen-awesome-css/doxygen-awesome-sidebar-only.css
+
+# Colour palette tuned for doxygen-awesome-css (blue accent, dark-mode compatible).
+HTML_COLORSTYLE_HUE    = 209
+HTML_COLORSTYLE_SAT    = 255
+HTML_COLORSTYLE_GAMMA  = 80
+
 # Source input
 
 INPUT                  = "./TransmitterNode" \
