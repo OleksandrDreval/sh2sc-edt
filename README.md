@@ -1,5 +1,7 @@
 # SH2SC-EDT
 
+[en English](README.md) | [uk Українська](README_uk.md)
+
 **Self-Healing Hardware and Software Complex for Encrypted Data Transmission**
 
 ---
