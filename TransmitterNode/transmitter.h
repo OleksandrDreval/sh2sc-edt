@@ -54,29 +54,19 @@ const uint32_t RECONNECT_INTERVAL_MS = 2000;
  *          stateDiagram-v2
  *              direction LR
  *              [*] --> IDLE
- *
  *              IDLE --> SENDING_HELLO       : button press
- *
  *              SENDING_HELLO --> WAITING_HELLO_ACK : HelloPacket sent
  *              WAITING_HELLO_ACK --> SENDING       : ACK received
  *              WAITING_HELLO_ACK --> RECONNECTING  : MAX_RETRIES exhausted
- *
  *              SENDING --> WAITING_ACK             : DataPacket sent
  *              WAITING_ACK --> WAIT_BETWEEN_NOTES  : ACK received
  *              WAITING_ACK --> RECONNECTING        : MAX_RETRIES exhausted
- *              WAIT_BETWEEN_NOTES --> SENDING      : gap elapsed, notes remain
- *              WAIT_BETWEEN_NOTES --> SENDING_FIN  : all notes delivered
- *
+ *              WAIT_BETWEEN_NOTES --> SENDING      : gap elapsed
+ *              WAIT_BETWEEN_NOTES --> SENDING_FIN  : all notes done
  *              SENDING_FIN --> WAITING_FIN_ACK     : FIN packet sent
  *              WAITING_FIN_ACK --> IDLE            : ACK + nonce erased
  *              WAITING_FIN_ACK --> RECONNECTING    : MAX_RETRIES exhausted
- *
- *              RECONNECTING --> SENDING_HELLO      : auto-ping every 2 s
- *              note right of RECONNECTING
- *                  melodyIndex preserved —
- *                  Auto-Resume resumes from
- *                  exact note of failure
- *              end note
+ *              RECONNECTING --> SENDING_HELLO      : auto-ping every 2s (melodyIndex preserved)
  *          @endmermaid
  */
 enum class TxState : uint8_t {
