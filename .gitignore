@@ -607,3 +607,7 @@ bin/*
 
 # VSCode JSON settings
 .vscode/*.json
+
+# Generated documentation
+docs/html/
+docs/latex/
