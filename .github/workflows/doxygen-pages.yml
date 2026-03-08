@@ -44,6 +44,13 @@ jobs:
           doxygen --version
           dot -V
 
+      - name: Pre-process Mermaid blocks for Doxygen
+        # Converts ```mermaid ... ``` blocks to @mermaid ... @endmermaid aliases so
+        # Doxygen renders them via the Mermaid.js CDN injected in footer.html.
+        # Runs only on the CI runner — the repository source is never modified.
+        run: |
+          perl -0777 -pi -e 's/```mermaid(.*?)```/@mermaid$1@endmermaid/gs' README.md README_uk.md
+
       - name: Generate Doxygen documentation
         run: doxygen Doxyfile
 
