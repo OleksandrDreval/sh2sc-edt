@@ -18,6 +18,7 @@ $generatedby&#160;<a href="https://www.doxygen.org/index.html"><img class="foote
 <!-- Mermaid.js — renders FSM and sequence diagrams embedded in Doxygen comments.
      Uses div.mermaid blocks injected via ALIASES in Doxyfile.
      v9 CDN is required for div.mermaid selector compatibility. -->
+<script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@9/dist/mermaid.min.js"></script>
 <script>
   mermaid.initialize({
@@ -25,6 +26,49 @@ $generatedby&#160;<a href="https://www.doxygen.org/index.html"><img class="foote
     theme: 'dark',
     securityLevel: 'loose'
   });
+
+  // Pan & Zoom for Mermaid diagrams.
+  // Mermaid renders SVG asynchronously, so a MutationObserver is required —
+  // a simple DOMContentLoaded callback fires before the SVG elements exist.
+  (function () {
+    function applyPanZoom(svgEl) {
+      // Guard: skip if already initialised on this element.
+      if (svgEl.classList.contains('pan-zoom-applied')) return;
+      svgEl.classList.add('pan-zoom-applied');
+
+      // Create a fixed-size viewport so the diagram can be panned without
+      // pushing surrounding content around.
+      svgEl.style.width  = '100%';
+      svgEl.style.height = '500px';
+
+      svgPanZoom(svgEl, {
+        zoomEnabled:        true,
+        controlIconsEnabled: true,
+        fit:                true,
+        center:             true,
+        minZoom:            0.3,
+        maxZoom:            10
+      });
+    }
+
+    // Observe the entire document for SVG nodes inserted inside div.mermaid.
+    // Each time Mermaid finishes rendering one diagram it inserts an <svg>
+    // child; the observer catches that insertion and arms pan-zoom immediately.
+    var observer = new MutationObserver(function (mutations) {
+      mutations.forEach(function (mutation) {
+        mutation.addedNodes.forEach(function (node) {
+          if (node.nodeName === 'svg') {
+            var parent = node.parentElement;
+            if (parent && parent.classList.contains('mermaid')) {
+              applyPanZoom(node);
+            }
+          }
+        });
+      });
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+  }());
 </script>
 </body>
 </html>
