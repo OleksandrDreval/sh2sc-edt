@@ -45,11 +45,13 @@ jobs:
           dot -V
 
       - name: Pre-process Mermaid blocks for Doxygen
-        # Converts ```mermaid ... ``` blocks to @mermaid ... @endmermaid aliases so
-        # Doxygen renders them via the Mermaid.js CDN injected in footer.html.
+        # Replaces ```mermaid ... ``` with \htmlonly <div class="mermaid"> ... </div> \endhtmlonly
+        # so Doxygen passes the diagram source to the browser completely unmodified.
+        # Using \htmlonly directly (instead of @mermaid alias) prevents Doxygen's Markdown
+        # parser from escaping characters such as > to &gt; inside the diagram source.
         # Runs only on the CI runner — the repository source is never modified.
         run: |
-          perl -0777 -pi -e 's/```mermaid(.*?)```/@mermaid$1@endmermaid/gs' README.md README_uk.md
+          perl -0777 -pi -e 's/```mermaid\s*(.*?)\s*```/\\htmlonly <div class="mermaid">\n$1\n<\/div> \\endhtmlonly/gs' README.md README_uk.md
 
       - name: Generate Doxygen documentation
         run: doxygen Doxyfile
