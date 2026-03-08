@@ -1,22 +1,29 @@
+/**
+ * @file protocol.h
+ * @brief Shared C2P-ARQ protocol definitions for SH2SC-EDT (Receiver Node B).
+ * @details Part of the SH2SC-EDT project. Implements the C2P-ARQ protocol.
+ *          Contains the Pre-Shared Key, frame flag constants, packed packet
+ *          structs (HelloPacket, DataPacket), ARQ timing constants, and UART
+ *          configuration shared by both Transmitter and Receiver nodes.
+ *          Included from receiver.h; do NOT include directly from .ino.
+ */
+
 #pragma once
 
 #include <stdint.h>
 
- 
-// SHARED PROTOCOL DEFINITIONS
-// Used by both Transmitter (Node A) and Receiver (Node B).
-// Implements ChaCha20-Poly1305 authenticated encryption with
-// a pre-shared 256-bit master key (PSK).
+/**
+ * @defgroup psk Pre-Shared Master Key
+ * @{
+ */
 
-
-// Pre-Shared Master Key (256-bit / 32 bytes)
-//
-// Both nodes must carry the SAME key compiled into their firmware.
-// Replace these placeholder bytes with your own secret values
-// before deploying to hardware.
-//
-// Used as the ChaCha20-Poly1305 key material for DATA packets.
-// The key is NEVER transmitted over the wire.
+/**
+ * @brief 256-bit (32-byte) Pre-Shared Master Key for ChaCha20-Poly1305 AEAD.
+ * @details Both nodes must carry the IDENTICAL key compiled into their firmware.
+ *          Replace placeholder bytes with your own secret values before deploying
+ *          to hardware. The key is NEVER transmitted over the wire and must NEVER
+ *          be logged to Serial, LCD, or any other output channel.
+ */
 const uint8_t MASTER_PSK[32] = {
   0xA1, 0x3C, 0x7F, 0x04, 0xE8, 0x92, 0x5B, 0xD6,
   0x3A, 0xFF, 0x01, 0x88, 0x4D, 0x62, 0xC0, 0x19,
@@ -24,101 +31,136 @@ const uint8_t MASTER_PSK[32] = {
   0x6B, 0x84, 0xE0, 0x27, 0x93, 0x5A, 0x1D, 0xCC
 };
 
+/** @} */ // end group psk
 
-// Frame flags (bitmask)
-//
-// The first byte of every frame is a flags field rather than a fixed type ID.
-// Using a bitmask allows future frames to combine roles (e.g. SYN|FIN for a
-// one-shot handshake) and lets the parser use bitwise-AND for matching,
-// which is more robust against single-bit noise corruption than strict equality.
-//
-//   FLAG_SYN  (0x01) — Session start: carries the 12-byte CSPRNG nonce.
-//   FLAG_DAT  (0x02) — Data frame: carries an encrypted note (index + duration).
-//   FLAG_FIN  (0x04) — Session end: instructs RX to close the current session.
-const uint8_t FLAG_SYN = 0x01;
-const uint8_t FLAG_DAT = 0x02;
-const uint8_t FLAG_FIN = 0x04;
+/**
+ * @defgroup frame_flags C2P-ARQ Frame Flag Constants
+ * @brief Bitmask identifiers for the @c flags byte in every C2P-ARQ frame.
+ * @details The first byte of every frame is a bitmask rather than a fixed type
+ *          ID. Using a bitmask allows future frames to combine roles and lets the
+ *          parser use bitwise-AND for matching, which is more resilient to
+ *          single-bit noise corruption than strict equality comparison.
+ * @{
+ */
+const uint8_t FLAG_SYN = 0x01; ///< Session open — HelloPacket carrying the 12-byte CSPRNG nonce.
+const uint8_t FLAG_DAT = 0x02; ///< Data frame — DataPacket carrying an encrypted note (index + duration).
+const uint8_t FLAG_FIN = 0x04; ///< Session close — instructs RX to teardown the current session.
+/** @} */ // end group frame_flags
 
+/**
+ * @defgroup frame_sizes Frame Size Constants
+ * @{
+ */
+const uint8_t HELLO_NONCE_SIZE   = 12u; ///< ChaCha20 IV length in bytes (IETF 96-bit nonce format).
+const uint8_t AUTH_TAG_SIZE      = 16u; ///< Full Poly1305 tag length in bytes (computed internally, not fully transmitted).
+const uint8_t TRUNCATED_MAC_SIZE =  8u; ///< Bytes of Poly1305 MAC actually placed on the wire (first 8 of 16).
 
-// Frame size constants
-const uint8_t HELLO_NONCE_SIZE   = 12u; // ChaChaPoly IV length (IETF 96-bit nonce)
-const uint8_t AUTH_TAG_SIZE      = 16u; // Full Poly1305 tag length (used internally)
-const uint8_t TRUNCATED_MAC_SIZE =  8u; // Bytes of MAC actually transmitted (first 8 of 16)
-// Plaintext payload of a DATA packet (encrypted portion):
-//   [0] note_index  (uint16_t) — index into the receiver's frequency dictionary
-//   [1] duration_ms (uint16_t) — note duration in milliseconds (direct, no encoding)
-const uint8_t DATA_PAYLOAD_SIZE  = 4u;  // sizeof(uint16_t) * 2
+/**
+ * @brief Byte size of the encrypted payload in a DataPacket.
+ * @details Covers two @c uint16_t fields: @c note_index and @c duration_ms.
+ *          Layout: [0..1] = note_index, [2..3] = duration_ms.
+ */
+const uint8_t DATA_PAYLOAD_SIZE  = 4u;
+/** @} */ // end group frame_sizes
 
-// Synchronisation preamble — two bytes sent immediately before every DataPacket.
-// The receiver scans for this pattern to re-lock onto the frame boundary
-// after a noise burst.  Using two distinct bytes reduces the false-sync rate
-// compared to a single repeated byte.
-const uint8_t SYNC_BYTE_1 = 0xAA;
-const uint8_t SYNC_BYTE_2 = 0x55;
+/**
+ * @defgroup sync_preamble Synchronisation Preamble Bytes
+ * @brief Two-byte magic sequence prepended to every packet on the wire.
+ * @details The receiver scans for this pattern to re-lock onto the frame
+ *          boundary after a noise burst. Two distinct bytes reduce the
+ *          false-sync rate compared to a single repeated byte.
+ * @{
+ */
+const uint8_t SYNC_BYTE_1 = 0xAA; ///< First synchronisation byte (preamble marker).
+const uint8_t SYNC_BYTE_2 = 0x55; ///< Second synchronisation byte (preamble marker).
+/** @} */ // end group sync_preamble
 
-
-// HELLO packet
-//
-// Sent by TX at the start of every melody session to deliver a
-// fresh 12-byte nonce to RX.  The nonce is generated by the
-// CSPRNG (ChaCha20 seeded with hardware entropy) and is unique
-// per session, making each DATA-packet ciphertext unique even
-// if the plaintext repeats across sessions.
-//
-// Wire layout (13 bytes total):
-//   Byte  0     : flags (FLAG_SYN = 0x01)
-//   Bytes 1–12  : nonce[12]
+/**
+ * @brief Session-open handshake packet (FLAG_SYN).
+ * @details Sent by TX at the start of every melody session to deliver a fresh
+ *          12-byte session nonce to RX. The nonce is generated by the CSPRNG
+ *          (ChaCha20 seeded with hardware entropy) and is unique per session,
+ *          ensuring each DATA-packet ciphertext is distinct even when the
+ *          plaintext note repeats across sessions.
+ *
+ *          Wire layout (13 bytes total, preceded by 2-byte sync preamble):
+ *          @code
+ *          Byte  0    : flags  (FLAG_SYN = 0x01)
+ *          Bytes 1–12 : nonce[12] — 96-bit CSPRNG session nonce
+ *          @endcode
+ */
 #pragma pack(push, 1)
 struct HelloPacket {
-  uint8_t flags;                   // FLAG_SYN (0x01) — identifies this as a handshake frame
-  uint8_t nonce[HELLO_NONCE_SIZE]; // 96-bit session nonce for ChaChaPoly
+  uint8_t flags;                   ///< Frame type — must equal FLAG_SYN (0x01).
+  uint8_t nonce[HELLO_NONCE_SIZE]; ///< 96-bit session nonce for ChaChaPoly per-packet IV derivation.
 };
 #pragma pack(pop)
 
-
-// DATA packet
-//
-// Carries one encrypted note (note_index + duration_encoded) authenticated
-// with a 16-byte Poly1305 MAC tag.  seq_num lives in the open header so
-// both nodes can independently compute the per-packet nonce:
-//   packetNonce = sessionNonce XOR (0x00…0 || seq_num)
-// without first decrypting the payload.
-//
-// Wire layout (15 bytes, preceded by 2 sync bytes = 17 bytes on the wire):
-//   Byte  0     : flags  (FLAG_DAT = 0x02) ─┬─ AAD (3 bytes authenticated,
-//   Bytes 1–2   : seq_num (uint16_t)        ─┘     but NOT encrypted)
-//   Bytes 3–6   : payload[2] uint16_t — ChaCha20 ciphertext (note_index, duration_ms)
-//   Bytes 7–14  : mac[8]              — first 8 bytes of Poly1305 tag
-//
-// Security property: any bit-flip in the flags byte OR either seq_num byte
-// causes MAC verification to fail and the packet is discarded (NACK sent).
+/**
+ * @brief Authenticated data packet (FLAG_DAT) and session-close packet (FLAG_FIN).
+ * @details Carries one encrypted note authenticated with a truncated Poly1305 MAC.
+ *          The @c seq_num field resides in the plaintext AAD so both nodes can
+ *          independently derive the per-packet nonce without decrypting the payload:
+ *          @code
+ *          packetNonce[0..11] = s_sessionNonce[0..11]
+ *          packetNonce[10]   ^= (seq_num >> 8) & 0xFF
+ *          packetNonce[11]   ^= (seq_num)      & 0xFF
+ *          @endcode
+ *
+ *          Wire layout (15 bytes, preceded by 2-byte sync preamble = 17 bytes total):
+ *          @code
+ *          Byte  0    : flags    (FLAG_DAT=0x02 or FLAG_FIN=0x04) — plaintext AAD byte 0
+ *          Bytes 1–2  : seq_num  (uint16_t, little-endian)        — plaintext AAD bytes 1-2
+ *          Bytes 3–6  : payload[2] — ChaCha20 ciphertext {note_index, duration_ms}
+ *          Bytes 7–14 : mac[8]     — first 8 bytes of Poly1305 tag
+ *          @endcode
+ *
+ * @note Any bit-flip in @c flags or @c seq_num causes MAC verification to fail
+ *       and the packet is discarded with a NACK response.
+ */
 #pragma pack(push, 1)
 struct DataPacket {
-  uint8_t  flags;                     // FLAG_DAT (0x02) ─┬─ plaintext AAD
-  uint16_t seq_num;                   // 16-bit sequence number (little-endian) ─┘
-  uint16_t payload[2];                // Encrypted: [note_index, duration_ms]
-  uint8_t  mac[TRUNCATED_MAC_SIZE];   // First 8 bytes of Poly1305 tag
+  uint8_t  flags;                   ///< Frame type — FLAG_DAT (0x02) for data; FLAG_FIN (0x04) for teardown. Part of plaintext AAD.
+  uint16_t seq_num;                 ///< 16-bit packet sequence number (little-endian). Part of plaintext AAD.
+  uint16_t payload[2];              ///< ChaCha20-encrypted payload: [0] = note_index, [1] = duration_ms.
+  uint8_t  mac[TRUNCATED_MAC_SIZE]; ///< First 8 bytes of the Poly1305 authentication tag.
 };
 #pragma pack(pop)
 
+/**
+ * @defgroup service_bytes ARQ Feedback Channel Bytes
+ * @brief Single-byte responses sent by RX on the clean feedback channel.
+ * @{
+ */
+const uint8_t ACK_BYTE  = 0x06; ///< Positive acknowledgement — MAC verified, note played (or FIN accepted).
+const uint8_t NACK_BYTE = 0x15; ///< Negative acknowledgement — MAC mismatch; TX must retransmit.
+/** @} */ // end group service_bytes
 
-// Service bytes (feedback channel)
-const uint8_t ACK_BYTE  = 0x06; // Positive acknowledgement (DATA packet authenticated)
-const uint8_t NACK_BYTE = 0x15; // Negative acknowledgement (MAC mismatch — resend)
+/**
+ * @defgroup note_encoding Note Encoding Helpers
+ * @{
+ */
 
-
-// Note encoding helpers
-
-// REST / pause sentinel.
-// TX sends this index to instruct RX to silence the buzzer.
+/**
+ * @brief Special note index value representing a rest (silence).
+ * @details TX sends this index to instruct RX to silence the buzzer for
+ *          the specified duration instead of playing a frequency.
+ */
 const uint8_t REST_INDEX = 255;
 
-// Duration is stored directly as uint16_t milliseconds in the payload—no
-// encoding step required now that payload fields are 16-bit.
+/** @} */ // end group note_encoding
 
-// Stop-and-Wait ARQ timing
-const uint32_t ACK_TIMEOUT_MS = 50UL; // Max ms to wait for ACK before retransmitting
-const uint8_t  MAX_RETRIES    = 50u;  // Retransmission limit before suspendSession()
+/**
+ * @defgroup arq_timing Stop-and-Wait ARQ Timing Constants
+ * @{
+ */
+const uint32_t ACK_TIMEOUT_MS = 50UL; ///< Maximum milliseconds TX waits for an ACK before retransmitting.
+const uint8_t  MAX_RETRIES    = 50u;  ///< Retransmission limit per packet; exhausting this triggers suspendSession().
+/** @} */ // end group arq_timing
 
-// UART configuration 
-const uint16_t BAUD_RATE = 9600;
+/**
+ * @defgroup uart_config UART Configuration
+ * @{
+ */
+const uint16_t BAUD_RATE = 9600; ///< UART baud rate in bps (8N1). Chosen for clear bit-width visibility on SimulIDE oscilloscope.
+/** @} */ // end group uart_config
