@@ -1,0 +1,129 @@
+# Doxyfile — SH2SC-EDT project documentation configuration.
+# Generated for Doxygen 1.9+ / C++ (AVR Arduino) source.
+# Run: doxygen Doxyfile  (from the repository root)
+# Output: docs_output/html/index.html
+
+# Project identity
+
+PROJECT_NAME           = "SH2SC-EDT"
+PROJECT_BRIEF          = "Self-Healing Hardware and Software Complex for Encrypted Data Transmission"
+PROJECT_NUMBER         =
+PROJECT_LOGO           =
+
+# Output
+
+OUTPUT_DIRECTORY       = docs_output
+CREATE_SUBDIRS         = NO
+OUTPUT_LANGUAGE        = English
+
+# HTML only — no LaTeX, no man pages, no RTF.
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+GENERATE_MAN           = NO
+GENERATE_RTF           = NO
+GENERATE_XML           = NO
+
+HTML_OUTPUT            = html
+HTML_FILE_EXTENSION    = .html
+HTML_DYNAMIC_SECTIONS  = YES
+
+# Source input
+
+INPUT                  = "./TransmitterNode" \
+                         "./ReceiverNode" \
+                         "./docs/en" \
+                         "./docs/uk"
+
+RECURSIVE              = YES
+
+# Only process these extensions — avoids pulling in binary build artefacts.
+FILE_PATTERNS          = *.h \
+                         *.ino \
+                         *.cpp \
+                         *.md
+
+EXCLUDE_PATTERNS       = */build/*
+
+EXTENSION_MAPPING      = ino=C++
+
+# Extraction — show everything including private FSM internals
+
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = YES
+EXTRACT_STATIC         = YES
+EXTRACT_LOCAL_METHODS  = YES
+HIDE_UNDOC_MEMBERS     = NO
+HIDE_UNDOC_CLASSES     = NO
+
+# Optimisation for C / embedded C++
+
+OPTIMIZE_OUTPUT_FOR_C  = YES
+BUILTIN_STL_SUPPORT    = NO
+CPP_CLI_SUPPORT        = NO
+
+# Main page
+
+USE_MDFILE_AS_MAINPAGE = ./docs/en/mainpage.md
+
+# Preprocessing — needed to resolve AVR macros without a full toolchain
+
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = NO
+
+# Suppress AVR-libc / Arduino macros that confuse the Doxygen parser.
+PREDEFINED             = PROGMEM= \
+                         __attribute__(x)= \
+                         _BV(x)=(1<<(x)) \
+                         F(x)=x
+
+# Warning control
+
+QUIET                  = NO
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = YES
+WARN_IF_DOC_ERROR      = YES
+WARN_NO_PARAMDOC       = YES
+WARN_LOGFILE           = docs_output/doxygen_warnings.log
+
+# Graphviz / DOT — FSM call graphs and include graphs
+
+HAVE_DOT               = YES
+
+# Set to the Graphviz bin directory if doxygen cannot find dot automatically.
+DOT_PATH               = "C:/Program Files/Graphviz/bin"
+
+DOT_NUM_THREADS        = 0
+DOT_IMAGE_FORMAT       = svg
+INTERACTIVE_SVG        = YES
+
+# Call graphs — who calls whom (critical for tracing FSM transitions).
+CALL_GRAPH             = YES
+CALLER_GRAPH           = YES
+
+# Include / dependency graphs.
+INCLUDE_GRAPH          = YES
+INCLUDED_BY_GRAPH      = YES
+
+# Inheritance and collaboration diagrams.
+CLASS_GRAPH            = YES
+COLLABORATION_GRAPH    = YES
+
+DOT_GRAPH_MAX_NODES    = 100
+MAX_DOT_GRAPH_DEPTH    = 4
+
+# Cross-references and source browsing
+
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = NO
+REFERENCED_BY_RELATION = YES
+REFERENCES_RELATION    = YES
+VERBATIM_HEADERS       = YES
+
+ALPHABETICAL_INDEX     = YES
+GENERATE_TREEVIEW      = YES
+
+# Search
+
+SEARCHENGINE           = YES
+SERVER_BASED_SEARCH    = NO
