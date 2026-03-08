@@ -51,8 +51,8 @@ HTML_COLORSTYLE_GAMMA  = 80
 
 INPUT                  = "./TransmitterNode" \
                          "./ReceiverNode" \
-                         "./docs/en" \
-                         "./docs/uk"
+                         "./README.md" \
+                         "./README_uk.md"
 
 RECURSIVE              = YES
 
@@ -83,7 +83,7 @@ CPP_CLI_SUPPORT        = NO
 
 # Main page
 
-USE_MDFILE_AS_MAINPAGE = ./docs/en/mainpage.md
+USE_MDFILE_AS_MAINPAGE = README.md
 
 # Preprocessing — needed to resolve AVR macros without a full toolchain
 
