@@ -27,6 +27,16 @@ HTML_OUTPUT            = html
 HTML_FILE_EXTENSION    = .html
 HTML_DYNAMIC_SECTIONS  = YES
 
+# Custom HTML templates (generated once with: doxygen -w html ... then edited).
+# footer.html injects Mermaid.js CDN for FSM/sequence diagram rendering.
+HTML_HEADER            = docs/html-templates/header.html
+HTML_FOOTER            = docs/html-templates/footer.html
+
+# Mermaid diagram aliases — use @mermaid / @endmermaid in Javadoc comments.
+# The div.mermaid selector is picked up by mermaid.initialize({startOnLoad:true}).
+ALIASES               += mermaid="@htmlonly <div class=\"mermaid\"> @endhtmlonly"
+ALIASES               += endmermaid="@htmlonly </div> @endhtmlonly"
+
 # doxygen-awesome-css theme (git submodule at docs/doxygen-awesome-css/).
 # Install submodule: git submodule add https://github.com/jothepro/doxygen-awesome-css.git docs/doxygen-awesome-css
 HTML_EXTRA_STYLESHEET  = docs/doxygen-awesome-css/doxygen-awesome.css \
