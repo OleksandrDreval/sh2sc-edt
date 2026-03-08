@@ -1,69 +1,73 @@
-// TRANSMITTER (Node A) — "The Conductor"
-// Flash this sketch onto the TX Arduino Nano.
-//
-// Responsibilities:
-//   - Read the start button (with millis-based debounce on pin 3).
-//   - Walk through the Super Mario melody array packet by packet.
-//   - sendHelloPacket(): generate CSPRNG nonce → broadcast HelloPacket.
-//   - sendPacket(): full ChaCha20-Poly1305 pipeline (nonce derivation →
-//     encrypt → authenticate → transmit 20-byte DataPacket).
-//   - Stop-and-Wait ARQ: after every SEND wait up to ACK_TIMEOUT_MS (50 ms) for ACK.
-//     ACK  → advance melody (melodyIndex++, seqNum++).
-//     NACK or timeout → retransmit the SAME packet with the SAME seqNum.
- 
+/**
+ * @file TransmitterNode.ino
+ * @brief SH2SC-EDT — Transmitter Node A ("The Conductor") firmware.
+ * @details Part of the SH2SC-EDT project. Implements the C2P-ARQ protocol.
+ *          Flash this sketch onto the TX Arduino Nano.
+ *
+ *          Responsibilities:
+ *          - Read the start button (millis-based debounce on pin 3).
+ *          - Walk through the Imperial March melody array packet by packet.
+ *          - sendHelloPacket(): generate a CSPRNG nonce and broadcast a HelloPacket.
+ *          - sendPacket(): full ChaCha20-Poly1305 pipeline
+ *            (nonce derivation -> encrypt -> authenticate -> transmit DataPacket).
+ *          - Stop-and-Wait ARQ: wait up to ACK_TIMEOUT_MS (50 ms) for ACK after each SEND.
+ *            ACK  -> advance melody (melodyIndex++, seqNum++).
+ *            NACK or timeout -> retransmit the SAME packet with the SAME seqNum.
+ *          - Self-Healing: after MAX_RETRIES, suspendSession() preserves melodyIndex and
+ *            enters RECONNECTING; resumes transmission from the failure point on reconnect.
+ */
 
 #include "transmitter.h"
 #include "melody.h"
 #include <LiquidCrystal_AIP31068_I2C.h>
 
- 
-// HARDWARE OBJECTS
- 
 
-// I2C LCD: 16 columns × 2 rows, Aip31068-compatible controller.
+/// @brief I2C LCD — 16 columns x 2 rows, Aip31068-compatible controller.
 static LiquidCrystal_AIP31068_I2C lcd(TX_LCD_ADDR, TX_LCD_COLS, TX_LCD_ROWS);
 
- 
-// RUNTIME STATE
- 
+static TxState  currentState  = TxState::IDLE;  ///< Active FSM state.
+static uint16_t melodyIndex   = 0;   ///< Current position in melody[][] (preserved across RECONNECTING).
+static uint16_t seqNum        = 0;   ///< Packet sequence number (0–65535, wraps).
+static uint8_t  retryCount    = 0;   ///< Consecutive retransmission counter (displayed on LCD).
+static uint32_t ackWaitStart  = 0;   ///< millis() timestamp when the current ACK-wait window opened.
 
-static TxState  currentState  = TxState::IDLE;
-static uint16_t melodyIndex   = 0;   // Current position within melody[][]
-static uint16_t seqNum        = 0;   // Packet sequence number (0–65535, wraps)
-static uint8_t  retryCount    = 0;   // Consecutive retransmission counter (shown on display)
-static uint32_t ackWaitStart  = 0;   // Timestamp (ms) when WAITING_ACK began
-
-// Auto-reconnect timer — fires every RECONNECT_INTERVAL_MS in RECONNECTING state.
+/// @brief Auto-reconnect countdown; a new HelloPacket is broadcast when (millis() - lastReconnectAttempt) >= RECONNECT_INTERVAL_MS.
 static uint32_t lastReconnectAttempt = 0;
 
-// Session nonce — generated once per button press by sendHelloPacket().
-// Per-packet IV is derived as: packetNonce = sessionNonce,
-// last two bytes XOR'd with the 16-bit seqNum (big-endian split):
-//   packetNonce[10] ^= (seqNum >> 8) & 0xFF
-//   packetNonce[11] ^=  seqNum       & 0xFF
+/**
+ * @brief 96-bit session nonce generated once per button press by sendHelloPacket().
+ * @details Per-packet IV derivation:
+ * @code
+ * packetNonce[0..11] = s_sessionNonce[0..11]
+ * packetNonce[10]   ^= (seqNum >> 8) & 0xFF
+ * packetNonce[11]   ^=  seqNum       & 0xFF
+ * @endcode
+ * Erased with memset() in suspendSession() and on WAITING_FIN_ACK success (forward secrecy).
+ */
 static uint8_t  s_sessionNonce[HELLO_NONCE_SIZE];
 
-// ChaCha20-Poly1305 cipher instance (re-initialised per packet via clear()).
+/// @brief ChaCha20-Poly1305 cipher instance — re-initialised per packet via clear().
 static ChaChaPoly s_cipher;
 
-// Pending packet snapshot — allows retransmission without re-reading melody arrays.
+/// @brief Snapshot of the last transmitted note index — allows retransmission without re-reading PROGMEM.
 static uint8_t  pendingNoteIndex    = 0;
-static uint16_t pendingNoteDuration = 0;   // Full duration in milliseconds
+/// @brief Snapshot of the last transmitted note duration (ms) — allows retransmission without re-reading PROGMEM.
+static uint16_t pendingNoteDuration = 0;
 
-// Timestamp (ms) when WAIT_BETWEEN_NOTES state began.
+/// @brief millis() timestamp marking the start of the current WAIT_BETWEEN_NOTES pause.
 static uint32_t noteWaitStart = 0;
 
-// Debounce state (millis-based) 
-// INPUT_PULLUP wiring: idle = HIGH, pressed = LOW.
-static bool     btnLastRawState = HIGH; // Raw digitalRead from the previous call
-static bool     btnStableState  = HIGH; // Debounce-confirmed stable state
-static uint32_t btnLastChangeMs = 0;    // Time of the last raw state change
+// Debounce state (millis-based). INPUT_PULLUP wiring: idle = HIGH, pressed = LOW.
+static bool     btnLastRawState = HIGH; ///< Raw digitalRead() result from the previous call.
+static bool     btnStableState  = HIGH; ///< Debounce-confirmed stable button state.
+static uint32_t btnLastChangeMs = 0;    ///< millis() timestamp of the last raw state transition.
 
- 
-// BUTTON HELPER — millis-based debounce
-// Returns true exactly once per physical button press (falling-edge detection).
-// Must be called every iteration of loop() to accumulate timing correctly.
- 
+/**
+ * @brief Read and debounce the start button (millis-based falling-edge detector).
+ * @details Must be called every iteration of loop() so the debounce timer
+ *          continues accumulating regardless of the active FSM state.
+ * @return @c true exactly once per confirmed physical button press; @c false otherwise.
+ */
 bool readButtonPress() {
   // Cast to bool: LOW = 0 = false, HIGH = 1 = true (INPUT_PULLUP logic).
   const bool rawReading = (digitalRead(TX_BUTTON_PIN) != LOW);
@@ -89,36 +93,28 @@ bool readButtonPress() {
   return false;
 }
 
- 
-// PACKET HELPERS
-
-// drainRxFifo — discard all bytes currently waiting in the 64-byte hardware
-// UART RX FIFO before transmitting any packet.
-//
-// Problem it solves: if the channel was noisy before the session started,
-// RX may have sent many NACKs (garbage parsed as corrupted DATA frames).
-// Those NACKs accumulate in TX's RX FIFO.  When TX sends HELLO and then
-// immediately polls Serial.available(), it reads a stale NACK, interprets
-// it as rejection of the HELLO it just sent, and enters a retry storm.
-//
-// Calling drainRxFifo() at the start of every send function ensures we
-// only ever see responses to the packet we are about to transmit.
+/**
+ * @brief Discard all bytes currently waiting in the hardware UART RX FIFO.
+ * @details Prevents stale NACK bytes — accumulated from noise bursts before the
+ *          session started — from being misread as responses to the packet that
+ *          is about to be transmitted. Called at the start of every send function
+ *          (sendHelloPacket(), sendPacket(), sendFinPacket()) to guarantee that
+ *          the first byte read after a send is always a fresh response.
+ */
 static inline void drainRxFifo() {
   while (Serial.available() > 0) {
     Serial.read();
   }
 }
 
-// sendHelloPacket — generate a fresh session nonce and broadcast it.
-//
-// Called ONCE per button press (from FSM IDLE state) BEFORE any DataPacket
-// is sent.  Both nodes will use this nonce as the base for per-packet IV
-// derivation:
-//   packetNonce[i] = s_sessionNonce[i]
-//   packetNonce[11] ^= seqNum          // last byte encodes packet counter
-//
-// The nonce comes from getSecureRandom32() (ChaCha20 CSPRNG seeded at power-on
-// with 256-bit hardware entropy), so it is cryptographically unique per session.
+/**
+ * @brief Generate a fresh 12-byte CSPRNG nonce and broadcast it as a FLAG_SYN HelloPacket.
+ * @details Called once per button press (from IDLE state) and once per reconnect attempt
+ *          (from RECONNECTING state) — always before any DataPacket is transmitted.
+ *          Calls drainRxFifo() before writing to the UART to purge stale NACKs.
+ *          Stores the generated nonce in s_sessionNonce for subsequent per-packet
+ *          IV derivation by sendPacket() and sendFinPacket().
+ */
 void sendHelloPacket() {
   // Fill s_sessionNonce with 12 CSPRNG bytes (3 × 32-bit words).
   for (uint8_t i = 0; i < HELLO_NONCE_SIZE; i += 4u) {
@@ -203,11 +199,13 @@ void sendPacket(uint8_t noteIndex, uint16_t noteDurationMs, uint16_t seqNumber) 
   Serial.write(reinterpret_cast<const uint8_t*>(&pkt), sizeof(DataPacket));
 }
 
-// formAndSendPacket — high-level entry point used by the FSM SENDING state.
-//
-// Workflow:
-//   1. Snapshot the plain-text payload as the retransmit buffer.
-//   2. Delegate to sendPacket() which owns the full ChaChaPoly pipeline.
+/**
+ * @brief Snapshot the note payload and delegate to sendPacket() for encryption and transmission.
+ * @details Stores @p note_idx and @p duration_ms as the pending retransmit snapshot so that
+ *          on NACK or timeout, the FSM can call sendPacket() directly without re-reading PROGMEM.
+ * @param note_idx    Note index read from the PROGMEM melody table (0–20 or REST_INDEX=255).
+ * @param duration_ms Note duration in milliseconds read from the PROGMEM melody table.
+ */
 void formAndSendPacket(uint8_t note_idx, uint16_t duration_ms) {
   // Snapshot the plain-text payload so the FSM can retransmit on NACK
   // without re-reading the melody arrays.
@@ -217,12 +215,16 @@ void formAndSendPacket(uint8_t note_idx, uint16_t duration_ms) {
   sendPacket(note_idx, duration_ms, seqNum);
 }
 
- 
-// DISPLAY HELPER
-// Updates the LCD only when explicitly called — never in a busy-loop.
-// Row 0: FSM state label.
-// Row 1: current sequence number + last checksum in hex.
- 
+/**
+ * @brief Refresh the TX LCD with the current ARQ status and FSM state label.
+ * @details Row 0: @c PKT:<seqNumber>  RTY:<retries> (live ARQ visibility for the operator).
+ *          Row 1: Human-readable FSM state name.
+ *          Must only be called on FSM state transitions — NOT in a tight loop —
+ *          to avoid I2C bus saturation.
+ * @param state     Current TxState to display on row 1.
+ * @param seqNumber Current packet sequence number to display on row 0.
+ * @param retries   Current consecutive retry count to display on row 0.
+ */
 void updateTxDisplay(TxState state, uint16_t seqNumber, uint8_t retries) {
   lcd.clear();
 
@@ -249,15 +251,18 @@ void updateTxDisplay(TxState state, uint16_t seqNumber, uint8_t retries) {
   }
 }
 
-// sendFinPacket — transmit a FLAG_FIN session-teardown packet.
-//
-// Architecture mirrors sendPacket() exactly so that RX can authenticate
-// the FIN using the same ChaChaPoly pipeline: same nonce derivation,
-// same 3-byte AAD, same truncated (8-byte) Poly1305 MAC.
-//
-// Payload is encrypted zeros — no melody data is carried by the FIN frame.
-// This prevents attackers from distinguishing a FIN from noise using the
-// ciphertext alone; the flags byte in the AAD ties the MAC to FLAG_FIN.
+/**
+ * @brief Construct and transmit a FLAG_FIN session-teardown packet.
+ * @details Architecture mirrors sendPacket() exactly: same per-packet nonce derivation
+ *          (XOR bytes 10–11 with seqNum), same 3-byte AAD (FLAG_FIN + seq_num),
+ *          same truncated 8-byte Poly1305 MAC. The plaintext payload is all-zeros;
+ *          the flags byte in the AAD binds the MAC to FLAG_FIN, preventing a
+ *          bit-flip attack from turning a data packet into a teardown signal.
+ *          Called from SENDING_FIN; retransmitted on NACK or timeout until
+ *          MAX_RETRIES is exhausted (which triggers suspendSession()).
+ * @note After receiving ACK for this packet, the caller MUST erase s_sessionNonce
+ *       via memset() to complete forward-secrecy teardown.
+ */
 void sendFinPacket() {
   // Step 1 — Derive per-packet nonce (identical derivation to sendPacket()).
   uint8_t packetNonce[HELLO_NONCE_SIZE];
@@ -305,27 +310,38 @@ void sendFinPacket() {
   Serial.write(reinterpret_cast<const uint8_t*>(&finPkt), sizeof(DataPacket));
 }
 
-// ENTROPY POOL  (TX variant — includes human-timing jitter from button press)
-
-// Pulse counter incremented by the ring oscillator ISR on pin 2 (INT0).
-// volatile prevents the compiler from caching the value in a register.
+/// @brief Ring oscillator pulse counter — incremented by the INT0 ISR on pin 2.
+/// @note Declared @c volatile to prevent the compiler from caching the value in a register.
 static volatile uint32_t s_ringOscPulses = 0;
+
+/// @brief INT0 interrupt service routine — counts ring oscillator rising edges.
 static void onRingOscPulse() { ++s_ringOscPulses; }
 
-// mixEntropy — one step of the cryptographic sponge.
-// Rotates the pool left by 1 bit, then XOR-folds in new entropy bits.
-// Left-rotation ensures every bit of the pool eventually influences all others.
+/**
+ * @brief One mixing step of the entropy accumulation sponge.
+ * @details Left-rotates @p pool by 1 bit, then XOR-folds in @p bits.
+ *          Left-rotation ensures each bit of the pool eventually influences all others,
+ *          preventing entropy accumulation from being purely commutative.
+ * @param pool Accumulated entropy pool value from previous iterations.
+ * @param bits New entropy bits to fold in.
+ * @return Updated pool value after the rotation-XOR mix.
+ */
 static inline uint32_t mixEntropy(uint32_t pool, uint32_t bits) {
   return ((pool << 1u) | (pool >> 31u)) ^ bits;
 }
 
-// generateEntropyPool (TX) — fills outputSeed[32] with 256 bits of entropy.
-// The 32-byte output is structured as 8 independent 32-bit words.
-// Each word is produced by a fresh pass over ALL seven hardware sources,
-// ensuring that even if one source is biased in a given iteration, the
-// others compensate through the rotate-XOR mixing chain.
-//
-// Total execution time: 8 iterations × 2 ms gate ≈ 16 ms (one-shot only).
+/**
+ * @brief Harvest 256 bits of hardware entropy and write them to @p outputSeed (TX variant).
+ * @details Fills outputSeed[32] as 8 independent 32-bit words. Each word is produced by
+ *          a fresh pass over all seven entropy sources so that a biased source in one
+ *          iteration is compensated by the others through the rotate-XOR mixing chain.
+ *          Total execution time: 8 iterations x 2 ms gate = ~16 ms (one-shot cost).
+ *          This is the TX variant — it includes micros() human-timing jitter from the
+ *          button press as a seventh source not present on the RX node.
+ * @param outputSeed Pointer to a 32-byte output buffer. Must be valid and writable.
+ *                   Pass directly to initCSPRNG(); scrub afterwards if desired.
+ * @note Must be called once per button press, AFTER readButtonPress() returns @c true.
+ */
 void generateEntropyPool(uint8_t* outputSeed) {
   // SRAM base: 64 uninitialised bytes starting at 0x0100 on ATmega328P.
   // Each word consumes a distinct 8-byte slice so the slices never repeat.
@@ -391,16 +407,22 @@ void generateEntropyPool(uint8_t* outputSeed) {
   }
 }
 
-// suspendSession — link-loss teardown with melody position preserved.
-//
-// Called when retryCount reaches MAX_RETRIES in any WAITING_* state.
-// Unlike a clean FIN close, this is an unclean abort: the receiver vanished
-// without sending FLAG_FIN.  We erase the session nonce (forward-secrecy)
-// but deliberately keep melodyIndex so RECONNECTING can resume from the
-// exact note where the link dropped rather than restarting the whole melody.
-// The blocking delay(2000) holds the error message long enough to read AND
-// pre-arms lastReconnectAttempt so the first auto-ping fires after a full
-// RECONNECT_INTERVAL_MS, giving the receiver time to reboot.
+/**
+ * @brief Perform an unclean session teardown and enter the Self-Healing reconnect loop.
+ * @details Called when @c retryCount reaches @c MAX_RETRIES in any @c WAITING_* FSM state.
+ *          Unlike a clean FIN close, this is an unclean abort — the receiver vanished
+ *          without sending FLAG_FIN. Actions performed:
+ *          1. Erases @c s_sessionNonce via @c memset() (forward secrecy — the old nonce
+ *             must not be reused after an unclean close).
+ *          2. Resets @c seqNum and @c retryCount to 0.
+ *          3. Preserves @c melodyIndex — the defining Self-Healing property of SH2SC-EDT;
+ *             transmission will resume from the exact note of failure on reconnect.
+ *          4. Transitions the FSM to @c TxState::RECONNECTING.
+ *          5. Pre-arms @c lastReconnectAttempt so the first auto-ping fires after a full
+ *             @c RECONNECT_INTERVAL_MS, giving the receiver time to reboot.
+ * @note The @c delay(2000) inside this function is the only permitted blocking call outside
+ *       of setup() — it holds the LCD error message visible to the operator.
+ */
 void suspendSession() {
   lcd.clear();
   lcd.setCursor(0, 0);
@@ -421,10 +443,14 @@ void suspendSession() {
   delay(2000);  // Hold error message so the operator can read it.
 }
 
- 
-// ARDUINO ENTRY POINTS
- 
-
+/**
+ * @brief Initialise TX hardware and seed the CSPRNG. Called once from setup().
+ * @details Initialises UART at BAUD_RATE (9600), configures TX_BUTTON_PIN as INPUT_PULLUP,
+ *          initialises the I2C LCD, harvests 256-bit hardware entropy with
+ *          generateEntropyPool(), seeds the ChaCha20 CSPRNG with initCSPRNG(),
+ *          scrubs the entropy seed buffer from the stack, and sets the initial
+ *          FSM state to IDLE.
+ */
 void tx_setup() {
   // UART: 9600 8N1 — matches protocol specification and SimulIDE oscilloscope.
   Serial.begin(BAUD_RATE);
@@ -450,6 +476,13 @@ void tx_setup() {
   updateTxDisplay(currentState, seqNum, retryCount);
 }
 
+/**
+ * @brief Execute one non-blocking C2P-ARQ FSM tick. Called repeatedly from loop().
+ * @details Dispatches to the handler for the active TxState. Each invocation
+ *          performs at most one FSM transition and returns immediately.
+ *          No delay() calls are permitted in this function or any callee
+ *          (except the intentional 2-second error display in suspendSession()).
+ */
 void tx_loop() {
   // readButtonPress() must run every iteration so the debounce timer
   // keeps accumulating even when the FSM is not in IDLE.
@@ -540,7 +573,7 @@ void tx_loop() {
         const uint8_t response = static_cast<uint8_t>(Serial.read());
 
         if (response == ACK_BYTE) {
-          // ACK: packet intact → enter the inter-note pause before advancing.
+          // ACK: packet intact -> enter the inter-note pause before advancing.
           // melodyIndex is NOT incremented here — WAIT_BETWEEN_NOTES still
           // needs pgm_read_word(&melody[melodyIndex][1]) to determine how long to pause.
           retryCount    = 0;
@@ -549,7 +582,7 @@ void tx_loop() {
           updateTxDisplay(currentState, seqNum, retryCount);
 
         } else if (response == NACK_BYTE) {
-          // NACK: RX detected corruption → wait briefly then retransmit the SAME packet.
+          // NACK: RX detected corruption -> wait briefly then retransmit the SAME packet.
           // delay(10) gives the RX UART buffer time to drain residual noise bytes
           // before the retransmission arrives, reducing cascading NACK storms.
           retryCount++;
@@ -565,7 +598,7 @@ void tx_loop() {
         // Any other byte (noise on the feedback line) is silently ignored.
 
       } else if ((millis() - ackWaitStart) >= ACK_TIMEOUT_MS) {
-        // Timeout: no response within 50 ms → channel or ACK was lost.
+        // Timeout: no response within 50 ms -> channel or ACK was lost.
         // Retransmit the SAME packet with the SAME seqNum.
         retryCount++;
         if (retryCount >= MAX_RETRIES) {
@@ -665,7 +698,7 @@ void tx_loop() {
       }
       if ((millis() - lastReconnectAttempt) >= RECONNECT_INTERVAL_MS) {
         // Auto-ping: attempt a new HELLO handshake to resume the session.
-        // On success WAITING_HELLO_ACK → SENDING will pick up at melodyIndex.
+        // On success WAITING_HELLO_ACK -> SENDING will pick up at melodyIndex.
         // On MAX_RETRIES suspendSession() re-enters RECONNECTING (keeps trying).
         lastReconnectAttempt = millis();
         currentState = TxState::SENDING_HELLO;
@@ -675,6 +708,7 @@ void tx_loop() {
   }
 }
 
-// Arduino sketch entry points 
+/// @brief Arduino sketch entry point — delegates to tx_setup().
 void setup() { tx_setup(); }
+/// @brief Arduino sketch main loop — delegates to tx_loop() on every iteration.
 void loop()  { tx_loop();  }
