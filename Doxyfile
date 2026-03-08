@@ -34,8 +34,8 @@ HTML_FOOTER            = docs/html-templates/footer.html
 
 # Mermaid diagram aliases — use @mermaid / @endmermaid in Javadoc comments.
 # The div.mermaid selector is picked up by mermaid.initialize({startOnLoad:true}).
-ALIASES               += mermaid="@htmlonly <div class=\"mermaid\"> @endhtmlonly"
-ALIASES               += endmermaid="@htmlonly </div> @endhtmlonly"
+ALIASES               += mermaid="@htmlonly <div class=\"mermaid\">"
+ALIASES               += endmermaid="</div> @endhtmlonly"
 
 # doxygen-awesome-css theme (git submodule at docs/doxygen-awesome-css/).
 # Install submodule: git submodule add https://github.com/jothepro/doxygen-awesome-css.git docs/doxygen-awesome-css
