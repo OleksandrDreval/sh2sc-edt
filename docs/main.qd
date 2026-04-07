@@ -21,7 +21,6 @@
     .quarkdown.quarkdown-paged p {
       text-align: justify !important;
       text-indent: 1.5em !important;
-      line-height: 1.2 !important;
       margin-top: 0 !important;
       margin-bottom: 0.2em !important;
     }
@@ -229,66 +228,39 @@
       widows: 3;
     }
 
-    /* Global anti-clipping policy for long technical paragraphs.
-       Keep paragraphs as atomic page units where possible and allow
-       emergency wrapping for long tokens to avoid hidden overflow fragments. */
-    .quarkdown.quarkdown-paged p {
-      overflow-wrap: anywhere;
-      word-break: normal;
-      hyphens: auto;
-    }
-
-    /* Inline code must be wrappable in justified paragraphs.
-       Do not apply this to code blocks (pre > code). */
-    .quarkdown.quarkdown-paged p code,
-    .quarkdown.quarkdown-paged li code,
-    .quarkdown.quarkdown-paged blockquote code {
-      white-space: normal !important;
-      overflow-wrap: anywhere !important;
-      word-break: break-word !important;
-    }
-
-    .quarkdown.quarkdown-paged pre code {
-      white-space: inherit !important;
-      overflow-wrap: inherit !important;
-      word-break: inherit !important;
-    }
-
-    /* ULTIMATE TEXT RETENTION SAFEGUARD
-       Prevents text swallowing but STRICTLY EXCLUDES all internal
-       elements of diagrams, formulas, and visual containers. */
-    .quarkdown.quarkdown-paged ul:not(.mermaid ul):not(.container ul),
-    .quarkdown.quarkdown-paged ol:not(.mermaid ol):not(.container ol),
-    .quarkdown.quarkdown-paged li:not(.mermaid li):not(.container li),
-    .quarkdown.quarkdown-paged blockquote {
+    /* REFINED GLOBAL TEXT RETENTION SAFEGUARD
+       Prevents text swallowing, but safely EXCLUDES visual
+       blocks (mermaid, katex, containers) so they don't bloat. */
+    .quarkdown.quarkdown-paged p,
+    .quarkdown.quarkdown-paged ul,
+    .quarkdown.quarkdown-paged ol,
+    .quarkdown.quarkdown-paged li,
+    .quarkdown.quarkdown-paged blockquote,
+    .quarkdown.quarkdown-paged div:not([class*="pagedjs_"]):not(.mermaid):not(.container):not(.center):not([class*="katex"]):not(.katex-display) {
       overflow: visible !important;
       max-height: none !important;
+    }
+
+    /* Explicitly allow standard text blocks to fragment */
+    .quarkdown.quarkdown-paged p,
+    .quarkdown.quarkdown-paged ul,
+    .quarkdown.quarkdown-paged ol,
+    .quarkdown.quarkdown-paged blockquote {
       break-inside: auto;
       page-break-inside: auto;
     }
 
-    /* VISUAL BLOCK CONTAINMENT (MERMAID & SVGs)
-       Keep the block model simple and stable for Pagedjs pagination. */
+    /* VISUAL BLOCK CONTAINMENT
+       Re-enforce strict boundaries so diagrams don't eat text */
     .quarkdown.quarkdown-paged .mermaid {
       max-height: 460px !important;
       overflow: hidden !important;
       break-inside: avoid !important;
       page-break-inside: avoid !important;
-
-      display: block !important;
-      text-align: center !important;
-      margin: 1.2em 0 !important;
-      padding-top: 0 !important;
-      clear: none !important;
-      position: static !important;
     }
 
     .quarkdown.quarkdown-paged .mermaid > svg {
-      max-width: 100% !important;
       max-height: 460px !important;
-      height: auto !important;
-      display: inline-block !important; /* Center via parent's text-align */
-      margin: 0 auto !important;
     }
 
     /* Safest academic approach: prevent code blocks from splitting across pages */
@@ -309,32 +281,6 @@
        split across a page boundary when avoidable. */
     .quarkdown.quarkdown-paged .mermaid,
     .quarkdown.quarkdown-paged formula[data-block] {
-      break-inside: avoid !important;
-      page-break-inside: avoid !important;
-    }
-
-    /* Universal anti-clipping guard:
-       paragraphs directly preceding Mermaid visual blocks must not be detached
-       from the following block at a page boundary. */
-    .quarkdown.quarkdown-paged p:has(+ .mermaid),
-    .quarkdown.quarkdown-paged p:has(+ figure:has(> pre.mermaid)),
-    .quarkdown.quarkdown-paged p:has(+ .center:has(+ .mermaid)),
-    .quarkdown.quarkdown-paged p:has(+ .center:has(+ figure:has(> pre.mermaid))) {
-      break-after: avoid-page !important;
-      page-break-after: avoid !important;
-    }
-
-    /* Keep the first paragraph after structural blocks atomic to avoid
-       hidden split tails produced by Pagedjs around page boundaries. */
-    .quarkdown.quarkdown-paged h1 + p,
-    .quarkdown.quarkdown-paged h2 + p,
-    .quarkdown.quarkdown-paged h3 + p,
-    .quarkdown.quarkdown-paged h4 + p,
-    .quarkdown.quarkdown-paged h5 + p,
-    .quarkdown.quarkdown-paged h6 + p,
-    .quarkdown.quarkdown-paged figure + p,
-    .quarkdown.quarkdown-paged .center + p,
-    .quarkdown.quarkdown-paged formula[data-block] + p {
       break-inside: avoid !important;
       page-break-inside: avoid !important;
     }
