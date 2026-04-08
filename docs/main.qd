@@ -504,14 +504,17 @@ C2P-ARQ resolves this constraint through exclusive reliance on non-blocking FSMs
 This design provides temporal determinism as a first-class property: at any point during execution, the precise state of the system is encoded in a single enum value with no hidden implicit state. The transmitter FSM defines nine states — `IDLE`, `RECONNECTING`, `SENDING_HELLO`, `WAITING_HELLO_ACK`, `SENDING`, `WAITING_ACK`, `WAIT_BETWEEN_NOTES`, `SENDING_FIN`, and `WAITING_FIN_ACK` — covering the complete session lifecycle from quiescence through authenticated teardown. The receiver implements a four-state byte-level parser, illustrated in Diagram 2, that advances one byte at a time and resets atomically to `WAIT_AA` on any MAC failure or parser timeout, guaranteeing that frame boundary corruption cannot propagate into subsequent frames. Because all session-recovery logic — `suspendSession()`, nonce erasure, `melodyIndex` preservation — executes within well-defined state transitions, the Auto-Resume mechanism is free of race conditions and memory leaks by construction: the system may remain in `RECONNECTING` indefinitely under sustained jamming without accumulating unbounded resource consumption.
 
 .mermaid
-    graph LR
-        %% Diagram 2 — §2.3: RX byte-level parser states
-        A[WAIT_AA] --> B[WAIT_55]
-        B --> C[READ_TYPE]
-        C --> D[READ_PAYLOAD]
+  stateDiagram-v2
+    %% Diagram 2 — §2.3: RX parser recovery path after MAC fail or timeout
+    [*] --> WAIT_AA
+    WAIT_AA --> WAIT_55: 0xAA
+    WAIT_55 --> READ_TYPE: 0x55
+    READ_TYPE --> READ_PAYLOAD: frame body
+    READ_PAYLOAD --> WAIT_AA: MAC fail or timeout
+    READ_PAYLOAD --> WAIT_AA: resetParser()
 
 .center
-    *Diagram 2: RX byte-level frame parser states. A call to `resetParser()` from any dispatch path returns the parser to `WAIT_AA` and prevents noise-corrupted frame boundaries from poisoning subsequent frame accumulation.*
+  *Diagram 2: RX parser recovery path. The byte-level FSM advances through preamble admission and returns to `WAIT_AA` on MAC failure, parser timeout, or an explicit `resetParser()` call.*
 
 # Hardware Architecture and Simulation Environment
 
