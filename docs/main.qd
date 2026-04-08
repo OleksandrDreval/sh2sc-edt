@@ -1311,14 +1311,15 @@ The complete lifecycle of `s_sessionNonce` in SRAM — from its initial undefine
 
 .mermaid
     stateDiagram-v2
+    direction LR
         %% Diagram 13 - section 6.3: s_sessionNonce Memory Lifecycle in C2P-ARQ
         [*] --> Uninitialized
-        Uninitialized --> Filled : SYN accepted - nonce loaded via memcpy (HelloPacket)
-        Filled --> Active : ACK_BYTE sent, s_sessionActive = true
-        Active --> Active : DAT frame authenticated (seqNum++, Watchdog reset)
-        Active --> Zeroed : Clean close - FIN MAC verified, ACK_BYTE sent (TX + RX)
-        Active --> Zeroed : Unclean close - suspendSession(), MAX_RETRIES exhausted (TX)
-        Active --> Zeroed : Dynamic Watchdog timeout - TX silent, no FIN (RX)
+    Uninitialized --> Filled : SYN accepted\nnonce loaded via memcpy\n(HelloPacket)
+    Filled --> Active : ACK_BYTE sent\ns_sessionActive = true
+    Active --> Active : DAT frame authenticated\n(seqNum++, Watchdog reset)
+    Active --> Zeroed : Clean close\nFIN MAC verified\nACK_BYTE sent (TX + RX)
+    Active --> Zeroed : Unclean close\nsuspendSession(), MAX_RETRIES exhausted (TX)
+    Active --> Zeroed : Dynamic Watchdog timeout\nTX silent, no FIN (RX)
         Zeroed --> Uninitialized : Ready for next session SYN
 
 .center
