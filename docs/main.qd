@@ -801,14 +801,20 @@ The `drainRxFifo()` call before every transmission is a defensive protocol invar
 On the receiver, `processReceivedByte()` advances the four-state byte-level parser, illustrated in Diagram 6, one byte at a time, using the preamble pair `0xAA 0x55` as the synchronisation gate. When the parser has accumulated all 13 HelloPacket body bytes into `rx_buffer` and `rx_buffer[0] & FLAG_SYN` holds, it dispatches `processHelloBody()`. This function copies `rx_buffer[1..12]` into `s_sessionNonce`, calls `s_cipher.setKey(MASTER_PSK, 32)` to pre-load the 256-bit PSK into the AEAD state, sets `s_sessionActive = true`, writes `ACK_BYTE` (0x06) to `Serial`, and initialises the Dynamic Smart Watchdog with `current_timeout_limit = 5000 ms` and `last_valid_packet_time = millis()`.
 
 .mermaid
-    graph LR
-        %% Diagram 6 — §5.1: RX byte-level parser states (SYN handshake)
-        A[WAIT_AA] --> B[WAIT_55]
-        B --> C[READ_TYPE]
-        C --> D[READ_PAYLOAD]
+  flowchart LR
+    %% Diagram 6 — §5.1: SYN handshake admission path for HelloPacket
+    A[WAIT_AA] --> B[WAIT_55]
+    B --> C[READ_TYPE]
+    C --> D[READ_PAYLOAD]
+    D --> E{FLAG_SYN?}
+    E -->|yes| F[processHelloBody]
+    E -->|no| G[resetParser]
+    F --> H[ACK + watchdog]
+    G --> A
+    H --> A
 
 .center
-    *Diagram 6: RX byte-level frame parser states during SYN handshake processing. Both `FLAG_SYN` and `FLAG_DAT`/`FLAG_FIN` frames pass through the same preamble gate before body accumulation begins.*
+  *Diagram 6: SYN handshake admission path. Only `FLAG_SYN` proceeds to `processHelloBody()`, which installs the session nonce, emits `ACK_BYTE`, and arms the Dynamic Smart Watchdog.*
 
 On receiving `ACK_BYTE` in `TxState::WAITING_HELLO_ACK`, the transmitter transitions to `TxState::SENDING`. If no `ACK_BYTE` arrives within `ACK_TIMEOUT_MS = 50 ms`, the FSM returns to `TxState::SENDING_HELLO` and issues a new `sendHelloPacket()` call — which generates a fresh CSPRNG nonce on every invocation, ensuring that the nonce window advances monotonically regardless of retry count. After `MAX_RETRIES = 50` consecutive failures, `suspendSession()` is invoked and the FSM enters `TxState::RECONNECTING` with `melodyIndex` preserved.
 
