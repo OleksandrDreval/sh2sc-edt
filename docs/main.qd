@@ -543,8 +543,8 @@ SimulIDE provides no RF propagation model. The physical layer is accordingly abs
 .mermaid
     graph LR
         %% Diagram 4 — §3.1: UART asymmetric channel topology
-        A["Node A TX (Transmitter)"] -->|"Data channel [XOR noise injector]"| B["Node B RX (Receiver)"]
-        C["Node B TX (Receiver)"] -->|"Feedback channel [Clean wire]"| D["Node A RX (Transmitter)"]
+        A["Node A TX (Transmitter)"] -->|"Data channel\n[XOR noise injector]"| B["Node B RX (Receiver)"]
+        C["Node B TX (Receiver)"] -->|"Feedback channel\n[Clean wire]"| D["Node A RX (Transmitter)"]
 
 .center
     *Diagram 4: C2P-ARQ asymmetric UART channel topology in the SimulIDE testbed. The data channel is subject to XOR bit-flip corruption; the feedback channel carrying `ACK_BYTE` and `NACK_BYTE` is a direct, unattacked wire.*
@@ -778,8 +778,8 @@ The asymmetric channel model is a defining structural property of C2P-ARQ, illus
 .mermaid
     graph LR
         %% Diagram 5 — §5: C2P-ARQ asymmetric channel model
-        A["Node A TX (Transmitter)"] -->|"Forward channel [Noisy — XOR injector]"| B["Node B RX (Receiver)"]
-        C["Node B TX (Receiver)"] -->|"Feedback channel [Clean — direct wire]"| D["Node A RX (Transmitter)"]
+        A["Node A TX (Transmitter)"] -->|"Forward channel\n[Noisy — XOR injector]"| B["Node B RX (Receiver)"]
+        C["Node B TX (Receiver)"] -->|"Feedback channel\n[Clean — direct wire]"| D["Node A RX (Transmitter)"]
 
 .center
     *Diagram 5: C2P-ARQ asymmetric channel model as referenced in the protocol specification. Reliability decisions (ACK/NACK/suspend) are conditioned on the clean feedback channel, making the ARQ mechanism immune to noise on the forward data path.*
