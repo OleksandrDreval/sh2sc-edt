@@ -932,6 +932,10 @@
               try {
                 dataUri = await svgElementToPngDataUri(svgElement, mermaidContainer);
               } catch (pngError) {
+                var pngErrorMessage = (pngError && pngError.message)
+                  ? pngError.message
+                  : String(pngError || 'PNG conversion failed');
+                mermaidContainer.setAttribute('data-png-fallback-reason', pngErrorMessage);
                 try {
                   dataUri = await svgElementToDataUri(svgElement, mermaidContainer);
                 } catch (svgError) {
