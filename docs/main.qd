@@ -604,6 +604,13 @@
             blockDescriptor.cssText,
             blockDescriptor.baseHref
           );
+
+          // Keep only self-contained font-face blocks. External font URLs taint canvas
+          // and make PNG export fail with a SecurityError.
+          if (/url\((?!["']?data:)/i.test(inlined)) {
+            continue;
+          }
+
           if (!dedupe[inlined]) {
             dedupe[inlined] = true;
             embeddedBlocks.push(inlined);
@@ -932,10 +939,6 @@
               try {
                 dataUri = await svgElementToPngDataUri(svgElement, mermaidContainer);
               } catch (pngError) {
-                var pngErrorMessage = (pngError && pngError.message)
-                  ? pngError.message
-                  : String(pngError || 'PNG conversion failed');
-                mermaidContainer.setAttribute('data-png-fallback-reason', pngErrorMessage);
                 try {
                   dataUri = await svgElementToDataUri(svgElement, mermaidContainer);
                 } catch (svgError) {
