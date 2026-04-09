@@ -298,6 +298,9 @@
        content into pages — ensuring the class survives pagination regardless of whether
        a page break falls between the formula and the paragraph. */
     (function() {
+      var embeddedFontCssCache = {};
+      var fontBinaryDataUriCache = {};
+
       function encodeUtf8ToBase64(text) {
         if (typeof TextEncoder !== 'undefined') {
           var bytes = new TextEncoder().encode(text);
@@ -310,6 +313,306 @@
           return btoa(binary);
         }
         return btoa(unescape(encodeURIComponent(text)));
+      }
+
+      function encodeArrayBufferToBase64(arrayBuffer) {
+        var bytes = new Uint8Array(arrayBuffer);
+        var binary = '';
+        var chunkSize = 0x8000;
+        for (var i = 0; i < bytes.length; i += chunkSize) {
+          var chunk = bytes.subarray(i, i + chunkSize);
+          binary += String.fromCharCode.apply(null, chunk);
+        }
+        return btoa(binary);
+      }
+
+      function inferFontMimeType(url) {
+        var clean = url.split('#')[0].split('?')[0].toLowerCase();
+        if (clean.endsWith('.woff2')) {
+          return 'font/woff2';
+        }
+        if (clean.endsWith('.woff')) {
+          return 'font/woff';
+        }
+        if (clean.endsWith('.ttf')) {
+          return 'font/ttf';
+        }
+        if (clean.endsWith('.otf')) {
+          return 'font/otf';
+        }
+        if (clean.endsWith('.eot')) {
+          return 'application/vnd.ms-fontobject';
+        }
+        if (clean.endsWith('.svg')) {
+          return 'image/svg+xml';
+        }
+        return 'application/octet-stream';
+      }
+
+      function stripQuotes(text) {
+        return text.replace(/^\s*['\"]|['\"]\s*$/g, '').trim();
+      }
+
+      function normalizeFontFamilyToken(text) {
+        return stripQuotes(text || '').toLowerCase();
+      }
+
+      function parseFontFamilyList(text) {
+        if (!text) {
+          return [];
+        }
+        return text.split(',').map(function(token) {
+          return normalizeFontFamilyToken(token);
+        }).filter(function(token) {
+          return token.length > 0;
+        });
+      }
+
+      function extractFontFamilyFromFontFaceBlock(block) {
+        var familyMatch = block.match(/font-family\s*:\s*([^;]+);/i);
+        if (!familyMatch) {
+          return '';
+        }
+        return normalizeFontFamilyToken(familyMatch[1]);
+      }
+
+      function shouldInlineFontUrl(url) {
+        if (!url || url.indexOf('data:') === 0) {
+          return false;
+        }
+        var clean = url.split('#')[0].split('?')[0].toLowerCase();
+        return clean.endsWith('.woff2') ||
+               clean.endsWith('.woff') ||
+               clean.endsWith('.ttf') ||
+               clean.endsWith('.otf') ||
+               clean.endsWith('.eot') ||
+               clean.endsWith('.svg');
+      }
+
+      async function fetchBinaryAsDataUri(url) {
+        if (fontBinaryDataUriCache[url]) {
+          return fontBinaryDataUriCache[url];
+        }
+
+        var response = await fetch(url, { mode: 'cors', credentials: 'omit' });
+        if (!response.ok) {
+          throw new Error('Failed to fetch font: ' + url);
+        }
+
+        var buffer = await response.arrayBuffer();
+        var mimeType = inferFontMimeType(url);
+        var dataUri = 'data:' + mimeType + ';base64,' + encodeArrayBufferToBase64(buffer);
+        fontBinaryDataUriCache[url] = dataUri;
+        return dataUri;
+      }
+
+      async function inlineFontUrlsInBlock(fontFaceBlock, baseHref) {
+        var urlRegex = /url\(([^)]+)\)/gi;
+        var matches = [];
+        var match;
+        while ((match = urlRegex.exec(fontFaceBlock)) !== null) {
+          matches.push({
+            fullMatch: match[0],
+            rawUrl: stripQuotes(match[1])
+          });
+        }
+
+        if (matches.length === 0) {
+          return fontFaceBlock;
+        }
+
+        var output = fontFaceBlock;
+        for (var i = 0; i < matches.length; i++) {
+          var entry = matches[i];
+          if (!shouldInlineFontUrl(entry.rawUrl)) {
+            continue;
+          }
+
+          try {
+            var absoluteUrl = new URL(entry.rawUrl, baseHref || document.baseURI).href;
+            var dataUri = await fetchBinaryAsDataUri(absoluteUrl);
+            output = output.replace(entry.fullMatch, 'url("' + dataUri + '")');
+          } catch (err) {
+            // Keep the original URL when fetch/CORS fails.
+          }
+        }
+
+        return output;
+      }
+
+      function extractFontFaceBlocksFromCssText(cssText) {
+        var blocks = [];
+        var fontFaceRegex = /@font-face\s*\{[\s\S]*?\}/gi;
+        var match;
+        while ((match = fontFaceRegex.exec(cssText)) !== null) {
+          blocks.push(match[0]);
+        }
+        return blocks;
+      }
+
+      function extractImportUrlsFromCssText(cssText) {
+        var urls = [];
+        var importRegex = /@import\s+(?:url\()?\s*['\"]?([^'\")\s]+)['\"]?\s*\)?[^;]*;/gi;
+        var match;
+        while ((match = importRegex.exec(cssText)) !== null) {
+          urls.push(match[1]);
+        }
+        return urls;
+      }
+
+      async function collectFontFaceBlocksFromCssUrl(cssUrl, requiredFamilies, collectedBlocks, visitedUrls) {
+        var absoluteUrl;
+        try {
+          absoluteUrl = new URL(cssUrl, document.baseURI).href;
+        } catch (err) {
+          return;
+        }
+
+        if (visitedUrls[absoluteUrl]) {
+          return;
+        }
+        visitedUrls[absoluteUrl] = true;
+
+        var cssText;
+        try {
+          var response = await fetch(absoluteUrl, { mode: 'cors', credentials: 'omit' });
+          if (!response.ok) {
+            return;
+          }
+          cssText = await response.text();
+        } catch (err) {
+          return;
+        }
+
+        var blocks = extractFontFaceBlocksFromCssText(cssText);
+        for (var i = 0; i < blocks.length; i++) {
+          var block = blocks[i];
+          var blockFamily = extractFontFamilyFromFontFaceBlock(block);
+          if (requiredFamilies[blockFamily]) {
+            collectedBlocks.push({
+              cssText: block,
+              baseHref: absoluteUrl
+            });
+          }
+        }
+
+        var imports = extractImportUrlsFromCssText(cssText);
+        for (var j = 0; j < imports.length; j++) {
+          await collectFontFaceBlocksFromCssUrl(
+            new URL(imports[j], absoluteUrl).href,
+            requiredFamilies,
+            collectedBlocks,
+            visitedUrls
+          );
+        }
+      }
+
+      async function collectFontFaceBlocksFromStyleSheets(requiredFamilies) {
+        var collected = [];
+        var visitedCssUrls = {};
+
+        async function collectFromSheet(sheet) {
+          if (!sheet) {
+            return;
+          }
+
+          var rules;
+          try {
+            rules = sheet.cssRules;
+          } catch (err) {
+            if (sheet.href) {
+              await collectFontFaceBlocksFromCssUrl(
+                sheet.href,
+                requiredFamilies,
+                collected,
+                visitedCssUrls
+              );
+            }
+            return;
+          }
+
+          if (!rules) {
+            if (sheet.href) {
+              await collectFontFaceBlocksFromCssUrl(
+                sheet.href,
+                requiredFamilies,
+                collected,
+                visitedCssUrls
+              );
+            }
+            return;
+          }
+
+          for (var i = 0; i < rules.length; i++) {
+            var rule = rules[i];
+            if (rule.type === CSSRule.FONT_FACE_RULE) {
+              var family = extractFontFamilyFromFontFaceBlock(rule.cssText);
+              if (requiredFamilies[family]) {
+                collected.push({
+                  cssText: rule.cssText,
+                  baseHref: sheet.href || document.baseURI
+                });
+              }
+              continue;
+            }
+
+            if (rule.type === CSSRule.IMPORT_RULE) {
+              if (rule.styleSheet) {
+                await collectFromSheet(rule.styleSheet);
+              } else if (rule.href) {
+                await collectFontFaceBlocksFromCssUrl(
+                  rule.href,
+                  requiredFamilies,
+                  collected,
+                  visitedCssUrls
+                );
+              }
+            }
+          }
+        }
+
+        for (var sheetIndex = 0; sheetIndex < document.styleSheets.length; sheetIndex++) {
+          await collectFromSheet(document.styleSheets[sheetIndex]);
+        }
+
+        return collected;
+      }
+
+      async function buildEmbeddedFontFaceCss(fontFamilyList) {
+        var normalizedFamilies = parseFontFamilyList(fontFamilyList);
+        if (normalizedFamilies.length === 0) {
+          return '';
+        }
+
+        var key = normalizedFamilies.slice().sort().join('|');
+        if (embeddedFontCssCache[key]) {
+          return embeddedFontCssCache[key];
+        }
+
+        var requiredFamilies = {};
+        for (var i = 0; i < normalizedFamilies.length; i++) {
+          requiredFamilies[normalizedFamilies[i]] = true;
+        }
+
+        var blocks = await collectFontFaceBlocksFromStyleSheets(requiredFamilies);
+        var embeddedBlocks = [];
+        var dedupe = {};
+
+        for (var j = 0; j < blocks.length; j++) {
+          var blockDescriptor = blocks[j];
+          var inlined = await inlineFontUrlsInBlock(
+            blockDescriptor.cssText,
+            blockDescriptor.baseHref
+          );
+          if (!dedupe[inlined]) {
+            dedupe[inlined] = true;
+            embeddedBlocks.push(inlined);
+          }
+        }
+
+        var result = embeddedBlocks.join('\n');
+        embeddedFontCssCache[key] = result;
+        return result;
       }
 
       function parseCssVarReference(value) {
@@ -352,7 +655,6 @@
 
       function readAcademicMermaidTheme(mermaidContainer) {
         var source = mermaidContainer.closest('.quarkdown') || document.documentElement;
-        var bodyStyle = getComputedStyle(document.body);
 
         return {
           background: resolveCssCustomProperty(source, '--qd-background-color', '#ffffff'),
@@ -377,14 +679,61 @@
             '#111111'
           ),
           lineColor: resolveCssCustomProperty(source, '--qd-mermaid-node-line-color', '#111111'),
-          nodeFilter: resolveCssCustomProperty(source, '--qd-mermaid-node-filter', 'none'),
-          fontFamily: bodyStyle.fontFamily || 'serif',
-          fontSize: bodyStyle.fontSize || '16px'
+          nodeFilter: resolveCssCustomProperty(source, '--qd-mermaid-node-filter', 'none')
         };
       }
 
-      function buildEmbeddedAcademicMermaidCss(theme) {
+      function readMermaidTypography(svgElement) {
+        var defaultStyle = getComputedStyle(document.body);
+        var svgStyle = getComputedStyle(svgElement);
+
+        var textElement = svgElement.querySelector(
+          '.label text, .messageText, .loopText, .branchLabel text, .title text, text'
+        );
+        var foreignParagraph = svgElement.querySelector('foreignObject p');
+
+        var textStyle = textElement ? getComputedStyle(textElement) : null;
+        var paragraphStyle = foreignParagraph ? getComputedStyle(foreignParagraph) : null;
+
+        var fontFamily = (textStyle && textStyle.fontFamily) ||
+                         (paragraphStyle && paragraphStyle.fontFamily) ||
+                         svgStyle.fontFamily ||
+                         defaultStyle.fontFamily ||
+                         'serif';
+
+        return {
+          fontFamily: fontFamily,
+          fontSize: (textStyle && textStyle.fontSize) ||
+                    (paragraphStyle && paragraphStyle.fontSize) ||
+                    svgStyle.fontSize ||
+                    defaultStyle.fontSize ||
+                    '16px',
+          fontWeight: (textStyle && textStyle.fontWeight) ||
+                      (paragraphStyle && paragraphStyle.fontWeight) ||
+                      svgStyle.fontWeight ||
+                      defaultStyle.fontWeight ||
+                      '400',
+          lineHeight: (textStyle && textStyle.lineHeight) ||
+                      (paragraphStyle && paragraphStyle.lineHeight) ||
+                      svgStyle.lineHeight ||
+                      defaultStyle.lineHeight ||
+                      'normal',
+          fontStyle: (textStyle && textStyle.fontStyle) ||
+                     (paragraphStyle && paragraphStyle.fontStyle) ||
+                     svgStyle.fontStyle ||
+                     defaultStyle.fontStyle ||
+                     'normal',
+          letterSpacing: (textStyle && textStyle.letterSpacing) ||
+                         (paragraphStyle && paragraphStyle.letterSpacing) ||
+                         svgStyle.letterSpacing ||
+                         defaultStyle.letterSpacing ||
+                         'normal'
+        };
+      }
+
+      function buildEmbeddedAcademicMermaidCss(theme, typography, embeddedFontFaceCss) {
         return [
+          embeddedFontFaceCss || '',
           ':root {',
           '  --qd-background-color: ' + theme.background + ';',
           '  --qd-mermaid-node-background-color: ' + theme.nodeBackground + ';',
@@ -395,8 +744,12 @@
           '  --qd-mermaid-node-filter: ' + theme.nodeFilter + ';',
           '}',
           'svg {',
-          '  font-family: ' + theme.fontFamily + ' !important;',
-          '  font-size: ' + theme.fontSize + ';',
+          '  font-family: ' + typography.fontFamily + ' !important;',
+          '  font-size: ' + typography.fontSize + ';',
+          '  font-weight: ' + typography.fontWeight + ';',
+          '  line-height: ' + typography.lineHeight + ';',
+          '  font-style: ' + typography.fontStyle + ';',
+          '  letter-spacing: ' + typography.letterSpacing + ';',
           '  text-rendering: geometricPrecision;',
           '  shape-rendering: geometricPrecision;',
           '}',
@@ -436,7 +789,12 @@
           '.loopText, .loopText tspan, .branchLabel text,',
           '.title text, text[class*=TitleText], text, tspan {',
           '  fill: var(--qd-mermaid-node-line-color) !important;',
-          '  font-family: ' + theme.fontFamily + ' !important;',
+          '  font-family: ' + typography.fontFamily + ' !important;',
+          '  font-size: ' + typography.fontSize + ' !important;',
+          '  font-weight: ' + typography.fontWeight + ' !important;',
+          '  line-height: ' + typography.lineHeight + ' !important;',
+          '  font-style: ' + typography.fontStyle + ' !important;',
+          '  letter-spacing: ' + typography.letterSpacing + ' !important;',
           '}',
           '.labelBkg {',
           '  background: none !important;',
@@ -450,17 +808,26 @@
           '  text-indent: 0 !important;',
           '  text-align: center !important;',
           '  color: var(--qd-mermaid-node-line-color) !important;',
-          '  font-family: ' + theme.fontFamily + ' !important;',
+          '  font-family: ' + typography.fontFamily + ' !important;',
+          '  font-size: ' + typography.fontSize + ' !important;',
+          '  font-weight: ' + typography.fontWeight + ' !important;',
+          '  line-height: ' + typography.lineHeight + ' !important;',
+          '  font-style: ' + typography.fontStyle + ' !important;',
+          '  letter-spacing: ' + typography.letterSpacing + ' !important;',
           '}'
         ].join('\n');
       }
 
-      function cloneSvgWithEmbeddedAcademicStyle(svgElement, mermaidContainer) {
+      async function cloneSvgWithEmbeddedAcademicStyle(svgElement, mermaidContainer) {
+        var typography = readMermaidTypography(svgElement);
+        var embeddedFontFaceCss = await buildEmbeddedFontFaceCss(typography.fontFamily);
         var svgClone = svgElement.cloneNode(true);
         var styleElement = document.createElementNS('http://www.w3.org/2000/svg', 'style');
         styleElement.setAttribute('type', 'text/css');
         styleElement.textContent = buildEmbeddedAcademicMermaidCss(
-          readAcademicMermaidTheme(mermaidContainer)
+          readAcademicMermaidTheme(mermaidContainer),
+          typography,
+          embeddedFontFaceCss
         );
 
         if (svgClone.firstChild) {
@@ -472,8 +839,8 @@
         return svgClone;
       }
 
-      function svgElementToDataUri(svgElement, mermaidContainer) {
-        var preparedSvg = cloneSvgWithEmbeddedAcademicStyle(svgElement, mermaidContainer);
+      async function svgElementToDataUri(svgElement, mermaidContainer) {
+        var preparedSvg = await cloneSvgWithEmbeddedAcademicStyle(svgElement, mermaidContainer);
         var serialized = new XMLSerializer().serializeToString(preparedSvg);
         if (!serialized.includes('xmlns="http://www.w3.org/2000/svg"')) {
           serialized = serialized.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
@@ -503,18 +870,20 @@
         if (typeof Paged === 'undefined') { setTimeout(tryRegister, 50); return; }
 
         class MermaidSvgToImageNormalizer extends Paged.Handler {
-          afterParsed(parsed) {
-            parsed.querySelectorAll('.mermaid').forEach(function(mermaidContainer) {
+          async afterParsed(parsed) {
+            var mermaidContainers = parsed.querySelectorAll('.mermaid');
+            for (var index = 0; index < mermaidContainers.length; index++) {
+              var mermaidContainer = mermaidContainers[index];
               var svgElement = mermaidContainer.querySelector('svg');
               if (!svgElement) {
-                return;
+                continue;
               }
 
               var dataUri;
               try {
-                dataUri = svgElementToDataUri(svgElement, mermaidContainer);
+                dataUri = await svgElementToDataUri(svgElement, mermaidContainer);
               } catch (err) {
-                return;
+                continue;
               }
 
               var image = document.createElement('img');
@@ -536,7 +905,7 @@
 
               // Replace the live SVG tree with a static replaced element.
               mermaidContainer.replaceChildren(image);
-            });
+            }
           }
         }
         Paged.registerHandlers(MermaidSvgToImageNormalizer);
