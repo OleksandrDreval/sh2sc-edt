@@ -865,9 +865,64 @@
         });
       }
 
+      function replaceForeignObjectsWithSvgText(svgRoot) {
+        var svgNamespace = 'http://www.w3.org/2000/svg';
+        var foreignObjects = svgRoot.querySelectorAll('foreignObject');
+
+        foreignObjects.forEach(function(foreignObject) {
+          var textContent = (foreignObject.textContent || '').replace(/\s+/g, ' ').trim();
+          if (!textContent) {
+            foreignObject.remove();
+            return;
+          }
+
+          var x = parseFloat(foreignObject.getAttribute('x') || '0');
+          var y = parseFloat(foreignObject.getAttribute('y') || '0');
+          var width = parseFloat(foreignObject.getAttribute('width') || '0');
+          var height = parseFloat(foreignObject.getAttribute('height') || '0');
+
+          var textElement = document.createElementNS(svgNamespace, 'text');
+          textElement.setAttribute('x', String(x + (width / 2)));
+          textElement.setAttribute('y', String(y + (height / 2)));
+          textElement.setAttribute('text-anchor', 'middle');
+          textElement.setAttribute('dominant-baseline', 'middle');
+          textElement.setAttribute('class', 'qd-rasterized-label');
+          textElement.textContent = textContent;
+
+          var parentNode = foreignObject.parentNode;
+          if (parentNode) {
+            parentNode.insertBefore(textElement, foreignObject);
+          }
+          foreignObject.remove();
+        });
+      }
+
       async function svgElementToPngDataUri(svgElement, mermaidContainer) {
         var preparedSvg = await cloneSvgWithEmbeddedAcademicStyle(svgElement, mermaidContainer);
-        var serialized = new XMLSerializer().serializeToString(preparedSvg);
+        var rasterReadySvg = preparedSvg.cloneNode(true);
+        replaceForeignObjectsWithSvgText(rasterReadySvg);
+
+        var rasterStyle = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+        rasterStyle.setAttribute('type', 'text/css');
+        rasterStyle.textContent = [
+          '.qd-rasterized-label {',
+          '  fill: var(--qd-mermaid-node-line-color) !important;',
+          '  font-family: "Trebuchet MS", Verdana, Arial, sans-serif;',
+          '  font-size: 14px;',
+          '  font-weight: 400;',
+          '}',
+          'text, tspan {',
+          '  text-rendering: geometricPrecision;',
+          '}'
+        ].join('\n');
+
+        if (rasterReadySvg.firstChild) {
+          rasterReadySvg.insertBefore(rasterStyle, rasterReadySvg.firstChild);
+        } else {
+          rasterReadySvg.appendChild(rasterStyle);
+        }
+
+        var serialized = new XMLSerializer().serializeToString(rasterReadySvg);
 
         if (!serialized.includes('xmlns="http://www.w3.org/2000/svg"')) {
           serialized = serialized.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
@@ -876,7 +931,7 @@
           serialized = serialized.replace('<svg', '<svg xmlns:xlink="http://www.w3.org/1999/xlink"');
         }
 
-        var rasterSize = getSvgRasterSize(svgElement, preparedSvg);
+        var rasterSize = getSvgRasterSize(svgElement, rasterReadySvg);
         var blob = new Blob([serialized], { type: 'image/svg+xml;charset=utf-8' });
         var blobUrl = URL.createObjectURL(blob);
 
