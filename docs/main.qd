@@ -743,16 +743,6 @@
           '  --qd-mermaid-node-line-color: ' + theme.lineColor + ';',
           '  --qd-mermaid-node-filter: ' + theme.nodeFilter + ';',
           '}',
-          'svg {',
-          '  font-family: ' + typography.fontFamily + ' !important;',
-          '  font-size: ' + typography.fontSize + ';',
-          '  font-weight: ' + typography.fontWeight + ';',
-          '  line-height: ' + typography.lineHeight + ';',
-          '  font-style: ' + typography.fontStyle + ';',
-          '  letter-spacing: ' + typography.letterSpacing + ';',
-          '  text-rendering: geometricPrecision;',
-          '  shape-rendering: geometricPrecision;',
-          '}',
           '.node path:not(.background), .actor:not(.background),',
           'rect:not(.legend rect, .plot rect):not(.background),',
           'polygon:not(.background), circle:not(.background) {',
@@ -789,12 +779,6 @@
           '.loopText, .loopText tspan, .branchLabel text,',
           '.title text, text[class*=TitleText], text, tspan {',
           '  fill: var(--qd-mermaid-node-line-color) !important;',
-          '  font-family: ' + typography.fontFamily + ' !important;',
-          '  font-size: ' + typography.fontSize + ' !important;',
-          '  font-weight: ' + typography.fontWeight + ' !important;',
-          '  line-height: ' + typography.lineHeight + ' !important;',
-          '  font-style: ' + typography.fontStyle + ' !important;',
-          '  letter-spacing: ' + typography.letterSpacing + ' !important;',
           '}',
           '.labelBkg {',
           '  background: none !important;',
@@ -808,12 +792,6 @@
           '  text-indent: 0 !important;',
           '  text-align: center !important;',
           '  color: var(--qd-mermaid-node-line-color) !important;',
-          '  font-family: ' + typography.fontFamily + ' !important;',
-          '  font-size: ' + typography.fontSize + ' !important;',
-          '  font-weight: ' + typography.fontWeight + ' !important;',
-          '  line-height: ' + typography.lineHeight + ' !important;',
-          '  font-style: ' + typography.fontStyle + ' !important;',
-          '  letter-spacing: ' + typography.letterSpacing + ' !important;',
           '}'
         ].join('\n');
       }
@@ -893,7 +871,7 @@
               image.loading = 'eager';
               image.className = 'mermaid-static-image';
               image.style.display = 'block';
-              image.style.width = '100%';
+              image.style.width = svgElement.style.width || '100%';
               image.style.maxWidth = '100%';
               image.style.height = 'auto';
               image.style.objectFit = 'contain';
