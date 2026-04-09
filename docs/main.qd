@@ -6,13 +6,6 @@
 
 .html
     <style>
-    .quarkdown.quarkdown-paged .mermaid > svg {
-      max-height: 460px !important;
-    }
-    .quarkdown.quarkdown-paged .mermaid {
-      max-height: 460px;
-      overflow: hidden;
-    }
     h1, h2, h3, h4, h5, h6 {
       text-align: center;
     }
@@ -56,14 +49,6 @@
     .quarkdown.quarkdown-paged formula[data-block] + p,
     .quarkdown.quarkdown-paged .after-display-math {
       text-indent: 0 !important;
-    }
-
-    /* Prevent text-indent and text-align:justify from leaking into Mermaid diagram
-       internal labels. Mermaid may render node text via <p> inside <foreignObject>. */
-    .quarkdown.quarkdown-paged .mermaid p {
-      text-indent: 0 !important;
-      text-align: center !important;
-      margin: 0 !important;
     }
 
     /* Display math blocks must not receive text-align:justify — they are
@@ -250,19 +235,6 @@
       page-break-inside: auto;
     }
 
-    /* VISUAL BLOCK CONTAINMENT
-       Re-enforce strict boundaries so diagrams don't eat text */
-    .quarkdown.quarkdown-paged .mermaid {
-      max-height: 460px !important;
-      overflow: hidden !important;
-      break-inside: avoid !important;
-      page-break-inside: avoid !important;
-    }
-
-    .quarkdown.quarkdown-paged .mermaid > svg {
-      max-height: 460px !important;
-    }
-
     /* Safest academic approach: prevent code blocks from splitting across pages */
     .quarkdown.quarkdown-paged pre {
       break-inside: avoid !important;
@@ -276,10 +248,7 @@
       margin-bottom: 0 !important;
     }
 
-    /* Keep figures and math blocks intact across pages
-       Mermaid diagrams and display-math formula elements should not be
-       split across a page boundary when avoidable. */
-    .quarkdown.quarkdown-paged .mermaid,
+    /* Keep display-math blocks intact across pages when avoidable. */
     .quarkdown.quarkdown-paged formula[data-block] {
       break-inside: avoid !important;
       page-break-inside: avoid !important;
@@ -825,7 +794,7 @@
       }
 
       async function svgElementToDataUri(svgElement, mermaidContainer) {
-        var preparedSvg = await cloneSvgWithEmbeddedAcademicStyle(svgElement, mermaidContainer);
+        var preparedSvg = createRenderedSvgSnapshot(svgElement);
         var serialized = new XMLSerializer().serializeToString(preparedSvg);
         if (!serialized.includes('xmlns="http://www.w3.org/2000/svg"')) {
           serialized = serialized.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
@@ -865,62 +834,143 @@
         });
       }
 
-      function replaceForeignObjectsWithSvgText(svgRoot) {
-        var svgNamespace = 'http://www.w3.org/2000/svg';
-        var foreignObjects = svgRoot.querySelectorAll('foreignObject');
+      function buildInlineStyleFromComputed(computedStyle) {
+        var properties = [
+          'display', 'visibility', 'opacity',
+          'fill', 'fill-opacity', 'stroke', 'stroke-opacity', 'stroke-width',
+          'stroke-dasharray', 'stroke-linecap', 'stroke-linejoin', 'vector-effect',
+          'color', 'background-color',
+          'font-family', 'font-size', 'font-weight', 'font-style',
+          'line-height', 'letter-spacing', 'text-anchor', 'dominant-baseline',
+          'text-align', 'text-indent', 'white-space',
+          'filter', 'transform', 'paint-order'
+        ];
 
-        foreignObjects.forEach(function(foreignObject) {
-          var textContent = (foreignObject.textContent || '').replace(/\s+/g, ' ').trim();
-          if (!textContent) {
-            foreignObject.remove();
-            return;
+        var chunks = [];
+        for (var index = 0; index < properties.length; index++) {
+          var propertyName = properties[index];
+          var value = computedStyle.getPropertyValue(propertyName);
+          if (!value) {
+            continue;
           }
 
-          var x = parseFloat(foreignObject.getAttribute('x') || '0');
-          var y = parseFloat(foreignObject.getAttribute('y') || '0');
-          var width = parseFloat(foreignObject.getAttribute('width') || '0');
-          var height = parseFloat(foreignObject.getAttribute('height') || '0');
+          // Skip externally-referenced resources to keep canvas export safe.
+          if (/url\((['"]?)https?:\/\//i.test(value)) {
+            continue;
+          }
 
+          chunks.push(propertyName + ':' + value + ';');
+        }
+
+        return chunks.join('');
+      }
+
+      function inlineComputedStylesRecursive(sourceNode, targetNode) {
+        if (!sourceNode || !targetNode || sourceNode.nodeType !== 1 || targetNode.nodeType !== 1) {
+          return;
+        }
+
+        var computedStyle = getComputedStyle(sourceNode);
+        var inlineStyle = buildInlineStyleFromComputed(computedStyle);
+        if (inlineStyle) {
+          targetNode.setAttribute('style', inlineStyle);
+        }
+
+        var sourceChildren = sourceNode.children;
+        var targetChildren = targetNode.children;
+        var childrenCount = Math.min(sourceChildren.length, targetChildren.length);
+        for (var childIndex = 0; childIndex < childrenCount; childIndex++) {
+          inlineComputedStylesRecursive(sourceChildren[childIndex], targetChildren[childIndex]);
+        }
+      }
+
+      function createRenderedSvgSnapshot(svgElement) {
+        var snapshot = svgElement.cloneNode(true);
+        inlineComputedStylesRecursive(svgElement, snapshot);
+
+        var rasterSize = getSvgRasterSize(svgElement, snapshot);
+        snapshot.setAttribute('width', String(rasterSize.width));
+        snapshot.setAttribute('height', String(rasterSize.height));
+
+        return snapshot;
+      }
+
+      function replaceForeignObjectsForRasterization(snapshotSvg, sourceSvg) {
+        var svgNamespace = 'http://www.w3.org/2000/svg';
+        var snapshotForeignObjects = snapshotSvg.querySelectorAll('foreignObject');
+        var sourceForeignObjects = sourceSvg.querySelectorAll('foreignObject');
+        var total = Math.min(snapshotForeignObjects.length, sourceForeignObjects.length);
+
+        for (var index = 0; index < total; index++) {
+          var sourceForeignObject = sourceForeignObjects[index];
+          var snapshotForeignObject = snapshotForeignObjects[index];
+
+          var sourceTextNode = sourceForeignObject.querySelector('p, span, div') || sourceForeignObject;
+          var computedStyle = getComputedStyle(sourceTextNode);
+          var lines = (sourceTextNode.innerText || sourceTextNode.textContent || '')
+            .split(/\r?\n/)
+            .map(function(line) { return line.trim(); })
+            .filter(function(line) { return line.length > 0; });
+
+          if (lines.length === 0) {
+            snapshotForeignObject.remove();
+            continue;
+          }
+
+          var x = parseFloat(snapshotForeignObject.getAttribute('x') || '0');
+          var y = parseFloat(snapshotForeignObject.getAttribute('y') || '0');
+          var width = parseFloat(snapshotForeignObject.getAttribute('width') || '0');
+          var height = parseFloat(snapshotForeignObject.getAttribute('height') || '0');
+
+          var centerX = x + (width / 2);
+          var centerY = y + (height / 2);
           var textElement = document.createElementNS(svgNamespace, 'text');
-          textElement.setAttribute('x', String(x + (width / 2)));
-          textElement.setAttribute('y', String(y + (height / 2)));
+
+          textElement.setAttribute('x', String(centerX));
+          textElement.setAttribute('y', String(centerY));
           textElement.setAttribute('text-anchor', 'middle');
           textElement.setAttribute('dominant-baseline', 'middle');
-          textElement.setAttribute('class', 'qd-rasterized-label');
-          textElement.textContent = textContent;
+          textElement.setAttribute('fill', computedStyle.color || '#111111');
+          textElement.setAttribute('font-family', computedStyle.fontFamily || 'sans-serif');
+          textElement.setAttribute('font-size', computedStyle.fontSize || '16px');
+          textElement.setAttribute('font-style', computedStyle.fontStyle || 'normal');
+          textElement.setAttribute('font-weight', computedStyle.fontWeight || '400');
+          textElement.setAttribute('letter-spacing', computedStyle.letterSpacing || 'normal');
 
-          var parentNode = foreignObject.parentNode;
-          if (parentNode) {
-            parentNode.insertBefore(textElement, foreignObject);
+          if (lines.length === 1) {
+            textElement.textContent = lines[0];
+          } else {
+            var lineHeightPx = parseFloat(computedStyle.lineHeight);
+            var fontSizePx = parseFloat(computedStyle.fontSize) || 16;
+            if (!isFinite(lineHeightPx) || lineHeightPx <= 0) {
+              lineHeightPx = fontSizePx * 1.2;
+            }
+
+            var totalHeight = lineHeightPx * (lines.length - 1);
+            var firstDy = -totalHeight / 2;
+
+            for (var lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+              var tspan = document.createElementNS(svgNamespace, 'tspan');
+              tspan.setAttribute('x', String(centerX));
+              tspan.setAttribute('dy', lineIndex === 0 ? String(firstDy) : String(lineHeightPx));
+              tspan.textContent = lines[lineIndex];
+              textElement.appendChild(tspan);
+            }
           }
-          foreignObject.remove();
-        });
+
+          var parentNode = snapshotForeignObject.parentNode;
+          if (parentNode) {
+            parentNode.insertBefore(textElement, snapshotForeignObject);
+          }
+          snapshotForeignObject.remove();
+        }
       }
 
       async function svgElementToPngDataUri(svgElement, mermaidContainer) {
-        var preparedSvg = await cloneSvgWithEmbeddedAcademicStyle(svgElement, mermaidContainer);
-        var rasterReadySvg = preparedSvg.cloneNode(true);
-        replaceForeignObjectsWithSvgText(rasterReadySvg);
-
-        var rasterStyle = document.createElementNS('http://www.w3.org/2000/svg', 'style');
-        rasterStyle.setAttribute('type', 'text/css');
-        rasterStyle.textContent = [
-          '.qd-rasterized-label {',
-          '  fill: var(--qd-mermaid-node-line-color) !important;',
-          '  font-family: "Trebuchet MS", Verdana, Arial, sans-serif;',
-          '  font-size: 14px;',
-          '  font-weight: 400;',
-          '}',
-          'text, tspan {',
-          '  text-rendering: geometricPrecision;',
-          '}'
-        ].join('\n');
-
-        if (rasterReadySvg.firstChild) {
-          rasterReadySvg.insertBefore(rasterStyle, rasterReadySvg.firstChild);
-        } else {
-          rasterReadySvg.appendChild(rasterStyle);
-        }
+        // SH2SC-EDT/C2P-ARQ: rasterize the already-rendered Quarkdown Mermaid SVG
+        // so PNG preserves штатний (default) Mermaid rendering appearance.
+        var rasterReadySvg = createRenderedSvgSnapshot(svgElement);
+        replaceForeignObjectsForRasterization(rasterReadySvg, svgElement);
 
         var serialized = new XMLSerializer().serializeToString(rasterReadySvg);
 
@@ -942,7 +992,7 @@
           await waitForImageLoad(image);
 
           var devicePixelRatioValue = window.devicePixelRatio || 1;
-          var pixelRatio = Math.min(2, Math.max(1, devicePixelRatioValue));
+          var pixelRatio = Math.min(4, Math.max(2, devicePixelRatioValue));
 
           var canvas = document.createElement('canvas');
           canvas.width = Math.max(1, Math.ceil(rasterSize.width * pixelRatio));
@@ -977,6 +1027,22 @@
         return 'Mermaid diagram';
       }
 
+      function replaceMermaidContainerWithRegularImage(mermaidContainer, image) {
+        var parentNode = mermaidContainer.parentNode;
+        if (!parentNode) {
+          return;
+        }
+
+        if (parentNode.tagName === 'FIGURE') {
+          parentNode.replaceChild(image, mermaidContainer);
+          return;
+        }
+
+        var figure = document.createElement('figure');
+        figure.appendChild(image);
+        parentNode.replaceChild(figure, mermaidContainer);
+      }
+
       function tryRegister() {
         if (typeof Paged === 'undefined') { setTimeout(tryRegister, 50); return; }
 
@@ -1006,20 +1072,10 @@
               image.alt = getMermaidAltText(mermaidContainer, svgElement);
               image.decoding = 'sync';
               image.loading = 'eager';
-              image.className = 'mermaid-static-image';
-              image.style.display = 'block';
-              image.style.width = svgElement.style.width || '100%';
-              image.style.maxWidth = '100%';
-              image.style.height = 'auto';
-              image.style.objectFit = 'contain';
 
-              var maxHeight = svgElement.style.maxHeight ||
-                              mermaidContainer.style.maxHeight ||
-                              '460px';
-              image.style.maxHeight = maxHeight;
-
-              // Replace the live SVG tree with a static replaced element.
-              mermaidContainer.replaceChildren(image);
+              // Replace Mermaid container with regular figure/img so Quarkdown
+              // applies the same automatic formatting as for normal images.
+              replaceMermaidContainerWithRegularImage(mermaidContainer, image);
             }
           }
         }
