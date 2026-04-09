@@ -773,15 +773,13 @@
       }
 
       async function cloneSvgWithEmbeddedAcademicStyle(svgElement, mermaidContainer) {
-        var typography = readMermaidTypography(svgElement);
-        var embeddedFontFaceCss = await buildEmbeddedFontFaceCss(typography.fontFamily);
         var svgClone = svgElement.cloneNode(true);
         var styleElement = document.createElementNS('http://www.w3.org/2000/svg', 'style');
         styleElement.setAttribute('type', 'text/css');
         styleElement.textContent = buildEmbeddedAcademicMermaidCss(
           readAcademicMermaidTheme(mermaidContainer),
-          typography,
-          embeddedFontFaceCss
+          null,
+          ''
         );
 
         if (svgClone.firstChild) {
@@ -794,7 +792,12 @@
       }
 
       async function svgElementToDataUri(svgElement, mermaidContainer) {
-        var preparedSvg = createRenderedSvgSnapshot(svgElement);
+        var preparedSvg = await cloneSvgWithEmbeddedAcademicStyle(svgElement, mermaidContainer);
+
+        var rasterSize = getSvgRasterSize(svgElement, preparedSvg);
+        preparedSvg.setAttribute('width', String(rasterSize.width));
+        preparedSvg.setAttribute('height', String(rasterSize.height));
+
         var serialized = new XMLSerializer().serializeToString(preparedSvg);
         if (!serialized.includes('xmlns="http://www.w3.org/2000/svg"')) {
           serialized = serialized.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
@@ -834,67 +837,6 @@
         });
       }
 
-      function buildInlineStyleFromComputed(computedStyle) {
-        var properties = [
-          'display', 'visibility', 'opacity',
-          'fill', 'fill-opacity', 'stroke', 'stroke-opacity', 'stroke-width',
-          'stroke-dasharray', 'stroke-linecap', 'stroke-linejoin', 'vector-effect',
-          'color', 'background-color',
-          'font-family', 'font-size', 'font-weight', 'font-style',
-          'line-height', 'letter-spacing', 'text-anchor', 'dominant-baseline',
-          'text-align', 'text-indent', 'white-space',
-          'filter', 'transform', 'paint-order'
-        ];
-
-        var chunks = [];
-        for (var index = 0; index < properties.length; index++) {
-          var propertyName = properties[index];
-          var value = computedStyle.getPropertyValue(propertyName);
-          if (!value) {
-            continue;
-          }
-
-          // Skip externally-referenced resources to keep canvas export safe.
-          if (/url\((['"]?)https?:\/\//i.test(value)) {
-            continue;
-          }
-
-          chunks.push(propertyName + ':' + value + ';');
-        }
-
-        return chunks.join('');
-      }
-
-      function inlineComputedStylesRecursive(sourceNode, targetNode) {
-        if (!sourceNode || !targetNode || sourceNode.nodeType !== 1 || targetNode.nodeType !== 1) {
-          return;
-        }
-
-        var computedStyle = getComputedStyle(sourceNode);
-        var inlineStyle = buildInlineStyleFromComputed(computedStyle);
-        if (inlineStyle) {
-          targetNode.setAttribute('style', inlineStyle);
-        }
-
-        var sourceChildren = sourceNode.children;
-        var targetChildren = targetNode.children;
-        var childrenCount = Math.min(sourceChildren.length, targetChildren.length);
-        for (var childIndex = 0; childIndex < childrenCount; childIndex++) {
-          inlineComputedStylesRecursive(sourceChildren[childIndex], targetChildren[childIndex]);
-        }
-      }
-
-      function createRenderedSvgSnapshot(svgElement) {
-        var snapshot = svgElement.cloneNode(true);
-        inlineComputedStylesRecursive(svgElement, snapshot);
-
-        var rasterSize = getSvgRasterSize(svgElement, snapshot);
-        snapshot.setAttribute('width', String(rasterSize.width));
-        snapshot.setAttribute('height', String(rasterSize.height));
-
-        return snapshot;
-      }
-
       function replaceForeignObjectsForRasterization(snapshotSvg, sourceSvg) {
         var svgNamespace = 'http://www.w3.org/2000/svg';
         var snapshotForeignObjects = snapshotSvg.querySelectorAll('foreignObject');
@@ -925,7 +867,6 @@
           var centerX = x + (width / 2);
           var centerY = y + (height / 2);
           var textElement = document.createElementNS(svgNamespace, 'text');
-
           textElement.setAttribute('x', String(centerX));
           textElement.setAttribute('y', String(centerY));
           textElement.setAttribute('text-anchor', 'middle');
@@ -967,10 +908,14 @@
       }
 
       async function svgElementToPngDataUri(svgElement, mermaidContainer) {
-        // SH2SC-EDT/C2P-ARQ: rasterize the already-rendered Quarkdown Mermaid SVG
-        // so PNG preserves штатний (default) Mermaid rendering appearance.
-        var rasterReadySvg = createRenderedSvgSnapshot(svgElement);
+        // SH2SC-EDT/C2P-ARQ: keep native Quarkdown Mermaid appearance and only
+        // then rasterize to PNG for Paged.js-safe regular image layout.
+        var rasterReadySvg = await cloneSvgWithEmbeddedAcademicStyle(svgElement, mermaidContainer);
         replaceForeignObjectsForRasterization(rasterReadySvg, svgElement);
+
+        var rasterSize = getSvgRasterSize(svgElement, rasterReadySvg);
+        rasterReadySvg.setAttribute('width', String(rasterSize.width));
+        rasterReadySvg.setAttribute('height', String(rasterSize.height));
 
         var serialized = new XMLSerializer().serializeToString(rasterReadySvg);
 
@@ -981,7 +926,6 @@
           serialized = serialized.replace('<svg', '<svg xmlns:xlink="http://www.w3.org/1999/xlink"');
         }
 
-        var rasterSize = getSvgRasterSize(svgElement, rasterReadySvg);
         var blob = new Blob([serialized], { type: 'image/svg+xml;charset=utf-8' });
         var blobUrl = URL.createObjectURL(blob);
 
