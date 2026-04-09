@@ -289,14 +289,97 @@
 
 .html
     <script>
+    /* SH2SC-EDT / C2P-ARQ: normalize Mermaid DOM before Pagedjs chunking.
+       Convert live Mermaid <svg> trees into static <img> data URIs so the
+       pagination engine sees a simple replaced element with stable metrics. */
     /* SH2SC-EDT — pre-Pagedjs marking: find every <p> that immediately follows a
        <formula data-block=""> in the source DOM and add class "after-display-math".
        This must run in Paged.Handler.afterParsed(), which fires BEFORE Pagedjs splits
        content into pages — ensuring the class survives pagination regardless of whether
        a page break falls between the formula and the paragraph. */
     (function() {
+      function encodeUtf8ToBase64(text) {
+        if (typeof TextEncoder !== 'undefined') {
+          var bytes = new TextEncoder().encode(text);
+          var binary = '';
+          var chunkSize = 0x8000;
+          for (var i = 0; i < bytes.length; i += chunkSize) {
+            var chunk = bytes.subarray(i, i + chunkSize);
+            binary += String.fromCharCode.apply(null, chunk);
+          }
+          return btoa(binary);
+        }
+        return btoa(unescape(encodeURIComponent(text)));
+      }
+
+      function svgElementToDataUri(svgElement) {
+        var serialized = new XMLSerializer().serializeToString(svgElement);
+        if (!serialized.includes('xmlns="http://www.w3.org/2000/svg"')) {
+          serialized = serialized.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+        }
+        if (!serialized.includes('xmlns:xlink="http://www.w3.org/1999/xlink"')) {
+          serialized = serialized.replace('<svg', '<svg xmlns:xlink="http://www.w3.org/1999/xlink"');
+        }
+        return 'data:image/svg+xml;base64,' + encodeUtf8ToBase64(serialized);
+      }
+
+      function getMermaidAltText(mermaidContainer, svgElement) {
+        var ariaLabel = svgElement.getAttribute('aria-label');
+        if (ariaLabel && ariaLabel.trim()) {
+          return ariaLabel.trim();
+        }
+        var caption = mermaidContainer.closest('figure');
+        if (caption) {
+          var figcaption = caption.querySelector('figcaption');
+          if (figcaption && figcaption.textContent.trim()) {
+            return figcaption.textContent.trim();
+          }
+        }
+        return 'Mermaid diagram';
+      }
+
       function tryRegister() {
         if (typeof Paged === 'undefined') { setTimeout(tryRegister, 50); return; }
+
+        class MermaidSvgToImageNormalizer extends Paged.Handler {
+          afterParsed(parsed) {
+            parsed.querySelectorAll('.mermaid').forEach(function(mermaidContainer) {
+              var svgElement = mermaidContainer.querySelector('svg');
+              if (!svgElement) {
+                return;
+              }
+
+              var dataUri;
+              try {
+                dataUri = svgElementToDataUri(svgElement);
+              } catch (err) {
+                return;
+              }
+
+              var image = document.createElement('img');
+              image.src = dataUri;
+              image.alt = getMermaidAltText(mermaidContainer, svgElement);
+              image.decoding = 'sync';
+              image.loading = 'eager';
+              image.className = 'mermaid-static-image';
+              image.style.display = 'block';
+              image.style.width = '100%';
+              image.style.maxWidth = '100%';
+              image.style.height = 'auto';
+              image.style.objectFit = 'contain';
+
+              var maxHeight = svgElement.style.maxHeight ||
+                              mermaidContainer.style.maxHeight ||
+                              '460px';
+              image.style.maxHeight = maxHeight;
+
+              // Replace the live SVG tree with a static replaced element.
+              mermaidContainer.replaceChildren(image);
+            });
+          }
+        }
+        Paged.registerHandlers(MermaidSvgToImageNormalizer);
+
         class AfterDisplayMathMarker extends Paged.Handler {
           afterParsed(parsed) {
             var formulas = parsed.querySelectorAll('formula[data-block]');
