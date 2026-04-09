@@ -1558,14 +1558,7 @@ The complete watchdog logic — from session arming through conditional erasure 
 
 A critical invariant must hold: the receiver's watchdog must never fire while the transmitter is still in the middle of a legitimate retry storm — that is, the receiver must not zero `s_sessionNonce` before the transmitter has finished its `MAX_RETRIES × ACK_TIMEOUT_MS` retry cycle and entered `TxState::RECONNECTING`. If this race condition could occur, the first `HelloPacket` of the reconnect handshake would be processed by a receiver that has already released its session nonce, which is the correct outcome. However, a `DataPacket` retransmission arriving at the receiver after `s_sessionNonce` has been zeroed would fail MAC verification and produce a NACK — escalating an already-degraded link into an unrecoverable desynchronization until the next SYN handshake completes.
 
-The protocol eliminates this race by construction. The worst-case TX retry storm duration is bounded at:
-
-$$$
-\begin{aligned}
-T_{\text{storm}} &= MAX\_RETRIES \times ACK\_TIMEOUT\_MS \\
-&= 50 \times 50\,\text{ms} = 2500\,\text{ms}
-\end{aligned}
-$$$
+The protocol eliminates this race by construction. The worst-case TX retry storm duration is bounded at 2500 ms, as derived earlier in the "Runaway Retry Prevention and the Self-Healing Suspension" subsection in §5.3.
 
 The grace period satisfies:
 
