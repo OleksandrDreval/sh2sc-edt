@@ -447,7 +447,7 @@ All transmitter and receiver logic is implemented as deterministic FSMs with no 
 
 .mermaid
     graph LR
-        %% Diagram 1 — §1.3: RX byte-level parser states
+        %% Diagram 1 — Section 1.3: RX byte-level parser states
         A[WAIT_AA] --> B[WAIT_55]
         B --> C[READ_TYPE]
         C --> D[READ_PAYLOAD]
@@ -505,7 +505,7 @@ This design provides temporal determinism as a first-class property: at any poin
 
 .mermaid
   stateDiagram-v2
-    %% Diagram 2 — §2.3: RX parser recovery path after MAC fail or timeout
+    %% Diagram 2 — Section 2.3: RX parser recovery path after MAC fail or timeout
     [*] --> WAIT_AA
     WAIT_AA --> WAIT_55: 0xAA
     WAIT_55 --> READ_TYPE: 0x55
@@ -532,7 +532,7 @@ The SH2SC-EDT simulation topology comprises two microcontroller nodes and an Att
 
 .mermaid
     graph LR
-        %% Diagram 3 — §3.1: UART feedback channel direction
+        %% Diagram 3 — Section 3.1: UART feedback channel direction
         A["Node B TX (Receiver)"] -->|"ACK / NACK only — clean, unattacked"| B["Node A RX (Transmitter)"]
 
 .center
@@ -542,7 +542,7 @@ SimulIDE provides no RF propagation model. The physical layer is accordingly abs
 
 .mermaid
     graph LR
-        %% Diagram 4 — §3.1: UART asymmetric channel topology
+        %% Diagram 4 — Section 3.1: UART asymmetric channel topology
         A["Node A TX (Transmitter)"] -->|"Data channel\n[XOR noise injector]"| B["Node B RX (Receiver)"]
         C["Node B TX (Receiver)"] -->|"Feedback channel\n[Clean wire]"| D["Node A RX (Transmitter)"]
 
@@ -669,7 +669,7 @@ bits across the 32-byte seed.
 
 ## The Cryptographic Entropy Blender
 
-The raw bit contributions harvested from the seven physical sources described in §4.1 cannot feed directly into the ChaCha20 engine as a key. Two structural deficiencies preclude it. First, every source introduces independent statistical bias: ring-oscillator edge counts cluster around a device-specific mean, ADC LSBs exhibit hardware-dependent 0/1 imbalance, and the `random()` term is wholly deterministic. Second, folding an arbitrary number of input bits into a 32-bit accumulator cannot raise that word's entropy above 32 bits — the actual budget is bounded by the dominant physical source alone. `initCSPRNG()` resolves both deficiencies through a two-stage blending pipeline executed immediately after `generateEntropyPool()` returns.
+The raw bit contributions harvested from the seven physical sources described in Section 4.1 cannot feed directly into the ChaCha20 engine as a key. Two structural deficiencies preclude it. First, every source introduces independent statistical bias: ring-oscillator edge counts cluster around a device-specific mean, ADC LSBs exhibit hardware-dependent 0/1 imbalance, and the `random()` term is wholly deterministic. Second, folding an arbitrary number of input bits into a 32-bit accumulator cannot raise that word's entropy above 32 bits — the actual budget is bounded by the dominant physical source alone. `initCSPRNG()` resolves both deficiencies through a two-stage blending pipeline executed immediately after `generateEntropyPool()` returns.
 
 ### Stage 1 — The Rotate-XOR Sponge
 
@@ -771,13 +771,13 @@ The underlying transport model is Stop-and-Wait ARQ: the transmitter sends exact
 
 $ 50 \times 50 = 2500\,\text{ms} $
 
-This value is deliberately chosen to fall below the 3000 ms grace period of the receiver's Smart Dynamic Watchdog (§7.2).
+This value is deliberately chosen to fall below the 3000 ms grace period of the receiver's Smart Dynamic Watchdog (Section 7.2).
 
-The asymmetric channel model is a defining structural property of C2P-ARQ, illustrated in Diagram 5. The forward data channel, routed from Node A TX to Node B RX, passes through the XOR noise injector and is subject to arbitrary bit-flip bursts; the feedback channel, running from Node B TX to Node A RX, is a direct, noiseless wire carrying only `ACK_BYTE` (0x06) and `NACK_BYTE` (0x15). Reliability decisions — whether to accept a frame, retransmit, or suspend the session — are therefore made on clean signal regardless of the noise level on the forward path. The subsections that follow specify the three-phase lifecycle (§5.1), the on-wire packet formats (§5.2), and the acknowledgement and retry-limit mechanism (§5.3).
+The asymmetric channel model is a defining structural property of C2P-ARQ, illustrated in Diagram 5. The forward data channel, routed from Node A TX to Node B RX, passes through the XOR noise injector and is subject to arbitrary bit-flip bursts; the feedback channel, running from Node B TX to Node A RX, is a direct, noiseless wire carrying only `ACK_BYTE` (0x06) and `NACK_BYTE` (0x15). Reliability decisions — whether to accept a frame, retransmit, or suspend the session — are therefore made on clean signal regardless of the noise level on the forward path. The subsections that follow specify the three-phase lifecycle (Section 5.1), the on-wire packet formats (Section 5.2), and the acknowledgement and retry-limit mechanism (Section 5.3).
 
 .mermaid
     graph LR
-        %% Diagram 5 — §5: C2P-ARQ asymmetric channel model
+        %% Diagram 5 — Section 5: C2P-ARQ asymmetric channel model
         A["Node A TX (Transmitter)"] -->|"Forward channel\n[Noisy — XOR injector]"| B["Node B RX (Receiver)"]
         C["Node B TX (Receiver)"] -->|"Feedback channel\n[Clean — direct wire]"| D["Node A RX (Transmitter)"]
 
@@ -802,7 +802,7 @@ On the receiver, `processReceivedByte()` advances the four-state byte-level pars
 
 .mermaid
   flowchart LR
-    %% Diagram 6 — §5.1: SYN handshake admission path for HelloPacket
+    %% Diagram 6 — Section 5.1: SYN handshake admission path for HelloPacket
     A[WAIT_AA] --> B[WAIT_55]
     B --> C[READ_TYPE]
     C --> D[READ_PAYLOAD]
@@ -852,7 +852,7 @@ All 65 536 sequence-number values therefore produce distinct per-packet nonces w
 
 #### AEAD Pipeline
 
-In `TxState::SENDING`, `sendPacket()` executes the following pipeline: (1) `s_cipher.clear()`, `s_cipher.setKey(MASTER_PSK, 32)`, `s_cipher.setIV(packetNonce, 12)`; (2) `s_cipher.addAuthData({FLAG_DAT, seq_lo, seq_hi}, 3)`, which hashes the three-byte plaintext header into the Poly1305 accumulator without encrypting it; (3) `s_cipher.encrypt(plaintext, ciphertext, 4)`, encrypting the four-byte payload `{note_index, duration_ms}`; (4) `s_cipher.computeTag(fullMac, 16)`, of which only the first 8 bytes (`TRUNCATED_MAC_SIZE = 8`) are appended to the `DataPacket.mac` field and transmitted. The symmetric pipeline executes on the receiver inside `authenticateAndPlay()`, with `decrypt()` followed by `computeTag()` and a constant-time `memcmp` against the received 8-byte tag; `startNote()` is invoked only after `memcmp` returns zero. Binding the flag byte and both bytes of `seq_num` to the AAD means that any single-bit noise burst affecting either field produces a guaranteed MAC failure regardless of the ciphertext content. The full wire format of `DataPacket` is specified in §5.2.
+In `TxState::SENDING`, `sendPacket()` executes the following pipeline: (1) `s_cipher.clear()`, `s_cipher.setKey(MASTER_PSK, 32)`, `s_cipher.setIV(packetNonce, 12)`; (2) `s_cipher.addAuthData({FLAG_DAT, seq_lo, seq_hi}, 3)`, which hashes the three-byte plaintext header into the Poly1305 accumulator without encrypting it; (3) `s_cipher.encrypt(plaintext, ciphertext, 4)`, encrypting the four-byte payload `{note_index, duration_ms}`; (4) `s_cipher.computeTag(fullMac, 16)`, of which only the first 8 bytes (`TRUNCATED_MAC_SIZE = 8`) are appended to the `DataPacket.mac` field and transmitted. The symmetric pipeline executes on the receiver inside `authenticateAndPlay()`, with `decrypt()` followed by `computeTag()` and a constant-time `memcmp` against the received 8-byte tag; `startNote()` is invoked only after `memcmp` returns zero. Binding the flag byte and both bytes of `seq_num` to the AAD means that any single-bit noise burst affecting either field produces a guaranteed MAC failure regardless of the ciphertext content. The full wire format of `DataPacket` is specified in Section 5.2.
 
 #### Acknowledgement and seqNum Advancement
 
@@ -866,7 +866,7 @@ When `TxState::WAIT_BETWEEN_NOTES` detects that all notes have been acknowledged
 
 On the receiver, `processFinPacket()` runs the identical AEAD pipeline. A structural requirement of the ChaCha20-Poly1305 construction is that `decrypt()` must be called before `computeTag()` even when the plaintext is discarded: the Poly1305 accumulator ingests ciphertext bytes as a side effect of `decrypt()`; omitting the call leaves the accumulator in an incorrect intermediate state and produces a false MAC mismatch for a legitimate FIN. The `processFinPacket()` implementation satisfies this requirement by decrypting the four zero bytes into a local `discardBuf[DATA_PAYLOAD_SIZE]` array before calling `computeTag()`.
 
-On MAC success, the receiver (1) writes `ACK_BYTE` to `Serial`, (2) calls `memset(s_sessionNonce, 0, HELLO_NONCE_SIZE)`, (3) sets `s_sessionActive = false`, and (4) calls `resetParser()`. On receiving `ACK_BYTE` in `TxState::WAITING_FIN_ACK`, the transmitter (1) calls `memset(s_sessionNonce, 0, HELLO_NONCE_SIZE)` symmetrically, (2) resets `melodyIndex = 0` and `seqNum = 0`, and (3) transitions to `TxState::IDLE`. After teardown, the only persistent secret material in the system is `MASTER_PSK` — compiled into both firmware images and never transmitted, logged, or displayed on any output channel. Neither node retains the session nonce, and no ciphertext block captured from the completed session can be reopened without knowledge of `MASTER_PSK`. The formal security and forward-secrecy properties of nonce erasure are analysed in §6.3.
+On MAC success, the receiver (1) writes `ACK_BYTE` to `Serial`, (2) calls `memset(s_sessionNonce, 0, HELLO_NONCE_SIZE)`, (3) sets `s_sessionActive = false`, and (4) calls `resetParser()`. On receiving `ACK_BYTE` in `TxState::WAITING_FIN_ACK`, the transmitter (1) calls `memset(s_sessionNonce, 0, HELLO_NONCE_SIZE)` symmetrically, (2) resets `melodyIndex = 0` and `seqNum = 0`, and (3) transitions to `TxState::IDLE`. After teardown, the only persistent secret material in the system is `MASTER_PSK` — compiled into both firmware images and never transmitted, logged, or displayed on any output channel. Neither node retains the session nonce, and no ciphertext block captured from the completed session can be reopened without knowledge of `MASTER_PSK`. The formal security and forward-secrecy properties of nonce erasure are analysed in Section 6.3.
 
 ### Complete Session Sequence Diagram
 
@@ -874,7 +874,7 @@ Diagram 7 illustrates the full C2P-ARQ session lifecycle. The SYN handshake (Pha
 
 .mermaid
     sequenceDiagram
-        %% Diagram 7 — §5.1: Complete C2P-ARQ session lifecycle sequence
+        %% Diagram 7 — Section 5.1: Complete C2P-ARQ session lifecycle sequence
         participant TX as Node A (Transmitter)
         participant RX as Node B (Receiver)
 
@@ -943,7 +943,7 @@ The `nonce[12]` field is regenerated on every `sendHelloPacket()` invocation, in
 
 The `DataPacket` struct is a packed 15-byte body, preceded by the 2-byte preamble, for a total of 17 bytes on the wire. It is used for both `FLAG_DAT = 0x02` (data transfer) and `FLAG_FIN = 0x04` (session teardown); the AEAD pipeline is identical in both cases. The struct contains four fields.
 
-The `flags` field (1 byte) identifies the frame role and forms AAD byte 0. The `seq_num` field (2 bytes, `uint16_t`, little-endian) is the 16-bit packet sequence number and forms AAD bytes 1–2; it also serves as the input to the per-packet nonce derivation described in §5.1. Together, `flags` and `seq_num` constitute the 3-byte AAD region that is cryptographically bound to the ciphertext by the Poly1305 tag. The `payload` field (4 bytes, `uint16_t[2]`) holds the ChaCha20 stream-cipher encryption of the `{note_index, duration_ms}` pair, both encrypted atomically in a single `s_cipher.encrypt()` call of length `DATA_PAYLOAD_SIZE = 4`. The `mac` field (8 bytes, `uint8_t[TRUNCATED_MAC_SIZE]`) holds the first `TRUNCATED_MAC_SIZE = 8` bytes of the 16-byte Poly1305 output; the remaining 8 bytes are computed internally by `s_cipher.computeTag()` but not transmitted, yielding a per-frame MAC forgery probability of $ 2^{-64} $. The complete byte-level wire layout is illustrated in Diagram 9.
+The `flags` field (1 byte) identifies the frame role and forms AAD byte 0. The `seq_num` field (2 bytes, `uint16_t`, little-endian) is the 16-bit packet sequence number and forms AAD bytes 1–2; it also serves as the input to the per-packet nonce derivation described in Section 5.1. Together, `flags` and `seq_num` constitute the 3-byte AAD region that is cryptographically bound to the ciphertext by the Poly1305 tag. The `payload` field (4 bytes, `uint16_t[2]`) holds the ChaCha20 stream-cipher encryption of the `{note_index, duration_ms}` pair, both encrypted atomically in a single `s_cipher.encrypt()` call of length `DATA_PAYLOAD_SIZE = 4`. The `mac` field (8 bytes, `uint8_t[TRUNCATED_MAC_SIZE]`) holds the first `TRUNCATED_MAC_SIZE = 8` bytes of the 16-byte Poly1305 output; the remaining 8 bytes are computed internally by `s_cipher.computeTag()` but not transmitted, yielding a per-frame MAC forgery probability of $ 2^{-64} $. The complete byte-level wire layout is illustrated in Diagram 9.
 
 .mermaid
     packet-beta
@@ -1028,7 +1028,7 @@ Were the receiver to release its nonce buffer prematurely, the first `DataPacket
 
 .mermaid
     flowchart TD
-        %% Diagram 10 — §5.3: WAITING_ACK decision tree for C2P-ARQ acknowledgement handling
+        %% Diagram 10 — Section 5.3: WAITING_ACK decision tree for C2P-ARQ acknowledgement handling
         A([Enter WAITING_ACK]) --> B{Event in tx_loop?}
         B -->|"0x06 - ACK_BYTE"| C["retryCount := 0, noteWaitStart := millis()"]
         B -->|"0x15 - NACK_BYTE"| D["drain FIFO 10ms, retryCount++"]
@@ -1050,13 +1050,13 @@ The security of C2P-ARQ is analysed under the standard Dolev-Yao network adversa
 
 Two bounding assumptions define the cryptographic trust boundary. First, standard-model cryptographic idealisation: ChaCha20 is modelled as a pseudorandom permutation computationally indistinguishable from a uniform random permutation; Poly1305 is modelled as a computationally secure one-time MAC; no polynomial-time adversary can break either primitive under the standard PRF/MAC assumptions. Second, physical memory isolation: the adversary cannot read SRAM contents directly from either node — `MASTER_PSK` and `s_sessionNonce` reside in firmware-controlled memory, are never streamed to any output channel, and are not exposed through any communication interface.
 
-Under these assumptions the session-layer security of every C2P-ARQ session reduces to the secrecy of the single 256-bit `MASTER_PSK` compiled into both firmware images. The PSK is never transmitted, never printed to `Serial` or the Aip31068 LCD, and never derived from any observable parameter. It is the unique shared secret from which all per-session and per-packet cryptographic authority flows: an adversary without `MASTER_PSK` faces computationally infeasible forgery, decryption, and session-hijacking attacks against any frame produced by the AEAD pipeline. The three sections that follow formally establish the properties C2P-ARQ provides within this model: per-packet AEAD authentication (§6.1), nonce injectivity and sequence-number binding (§6.2), and forward-secrecy nonce erasure (§6.3).
+Under these assumptions the session-layer security of every C2P-ARQ session reduces to the secrecy of the single 256-bit `MASTER_PSK` compiled into both firmware images. The PSK is never transmitted, never printed to `Serial` or the Aip31068 LCD, and never derived from any observable parameter. It is the unique shared secret from which all per-session and per-packet cryptographic authority flows: an adversary without `MASTER_PSK` faces computationally infeasible forgery, decryption, and session-hijacking attacks against any frame produced by the AEAD pipeline. The three sections that follow formally establish the properties C2P-ARQ provides within this model: per-packet AEAD authentication (Section 6.1), nonce injectivity and sequence-number binding (Section 6.2), and forward-secrecy nonce erasure (Section 6.3).
 
 ## Authenticated Encryption with Associated Data (ChaCha20-Poly1305)
 
 ### Why Integrity Dominates Confidentiality for Command Channels
 
-An intuitive but incomplete design for an embedded command channel applies a stream cipher to the payload field alone, providing confidentiality without integrity. This construction is fundamentally insufficient against the active adversary: stream-cipher ciphertext is additively malleable. If the adversary flips bit $ k $ of the 4-byte ciphertext block in `DataPacket.payload`, bit $ k $ of the corresponding decrypted byte flips identically after decryption, regardless of the key. In the C2P-ARQ payload, `note_index` occupies bytes 0–1 and `duration_ms` occupies bytes 2–3 (both `uint16_t`, little-endian). A single ciphertext bit-flip in byte 0 always yields a structurally valid but different `note_index` after decryption — the receiver has no mechanism to detect the substitution. An adversary who observes one plaintext session recovers the complete payload field layout and can thereafter synthesise arbitrary command substitutions over the encrypted channel without knowledge of `MASTER_PSK`. This is the bit-flip injection variant of the plaintext-injection attack identified in §1.1.
+An intuitive but incomplete design for an embedded command channel applies a stream cipher to the payload field alone, providing confidentiality without integrity. This construction is fundamentally insufficient against the active adversary: stream-cipher ciphertext is additively malleable. If the adversary flips bit $ k $ of the 4-byte ciphertext block in `DataPacket.payload`, bit $ k $ of the corresponding decrypted byte flips identically after decryption, regardless of the key. In the C2P-ARQ payload, `note_index` occupies bytes 0–1 and `duration_ms` occupies bytes 2–3 (both `uint16_t`, little-endian). A single ciphertext bit-flip in byte 0 always yields a structurally valid but different `note_index` after decryption — the receiver has no mechanism to detect the substitution. An adversary who observes one plaintext session recovers the complete payload field layout and can thereafter synthesise arbitrary command substitutions over the encrypted channel without knowledge of `MASTER_PSK`. This is the bit-flip injection variant of the plaintext-injection attack identified in Section 1.1.
 
 AEAD eliminates this attack class at the MAC gate. The Poly1305 tag $ \tau $ is a commitment to the exact byte sequence of the authenticated frame: any single-bit modification of the ciphertext or the plaintext header produces — with probability $ 1 - 2^{-64} $ — a different expected tag on the receiver, causing the constant-time `memcmp` check to fail. The security invariant enforced by `authenticateAndPlay()` is absolute: `startNote()` executes if and only if `memcmp` returns zero. No field of a MAC-failed packet influences the receiver's observable state, and no partial execution of the note-play path occurs on forgery attempt. Integrity is therefore not additive to confidentiality in C2P-ARQ — it is structurally prior: without the MAC gate, the adversary can inject commands via ciphertext malleability regardless of whether the payload is encrypted.
 
@@ -1074,7 +1074,7 @@ The resulting transmitter-side AEAD pipeline is summarized in Diagram 11.
 
 .mermaid
     flowchart TD
-        %% Diagram 11 — §6.1: sendPacket() ChaCha20-Poly1305 AEAD TX pipeline
+        %% Diagram 11 — Section 6.1: sendPacket() ChaCha20-Poly1305 AEAD TX pipeline
         PSK["MASTER_PSK (32 bytes)"] --> Init
         IVi["Per-Packet Nonce IV_i (12 bytes)"] --> Init
         Init["1. clear() / setKey(PSK, 32) / setIV(IV_i, 12)"] --> AData
@@ -1413,7 +1413,7 @@ The C standard permits a compiler to elide `memset()` calls that target buffers 
 
 # Fault Tolerance and Self-Healing Mechanisms
 
-The cryptographic mechanisms analysed in §6 — AEAD authentication, per-packet nonce uniqueness, and deterministic key erasure — constitute a defence against an adversary whose goal is to *manipulate* the payload: forge notes, replay old frames, or reconstruct plaintext from captured ciphertext. Against such an adversary, C2P-ARQ provides strong security guarantees bounded by the computational hardness of compromising ChaCha20-Poly1305.
+The cryptographic mechanisms analysed in Section 6 — AEAD authentication, per-packet nonce uniqueness, and deterministic key erasure — constitute a defence against an adversary whose goal is to *manipulate* the payload: forge notes, replay old frames, or reconstruct plaintext from captured ciphertext. Against such an adversary, C2P-ARQ provides strong security guarantees bounded by the computational hardness of compromising ChaCha20-Poly1305.
 
 A physically active attacker, however, need not engage with the cryptographic layer at all. By injecting sufficient noise to corrupt every transmitted bit, the attacker transforms the channel into one on which no valid frame can reach the receiver. The Poly1305 MAC correctly rejects every corrupted frame; yet this correct behaviour does nothing to advance the melody. Each rejected frame consumes one unit of the retry budget. When `MAX_RETRIES = 50` retries at `ACK_TIMEOUT_MS = 50 ms` each are exhausted — a sustained jamming interval of:
 
@@ -1497,7 +1497,7 @@ An operator may override the Self-Healing resumption by pressing the TX button w
 
 ### The Receiver Deadlock Problem
 
-The FLAG_FIN teardown path described in §5 achieves clean session closure only under the assumption that the transmitter remains capable of sending a final authenticated packet. In practice this assumption is violated by two failure modes: a hard power-cut at the transmitter, and the scenario analysed in §7.1 where the transmitter exhausts `MAX_RETRIES` and enters `RECONNECTING` without issuing a FIN. In both cases the receiver holds an open session indefinitely: `s_sessionActive` remains `true`, `s_sessionNonce` occupies 12 bytes of SRAM, and the parser will accept a new SYN only after the session is explicitly released. Without an active release mechanism, the next session can never be established — the system deadlocks.
+The FLAG_FIN teardown path described in Section 5 achieves clean session closure only under the assumption that the transmitter remains capable of sending a final authenticated packet. In practice this assumption is violated by two failure modes: a hard power-cut at the transmitter, and the scenario analysed in Section 7.1 where the transmitter exhausts `MAX_RETRIES` and enters `RECONNECTING` without issuing a FIN. In both cases the receiver holds an open session indefinitely: `s_sessionActive` remains `true`, `s_sessionNonce` occupies 12 bytes of SRAM, and the parser will accept a new SYN only after the session is explicitly released. Without an active release mechanism, the next session can never be established — the system deadlocks.
 
 A static session-release timeout does not resolve this deadlock cleanly. A short static value — smaller than the longest note duration in the melody — fires before the transmitter has had time to transmit the next packet, producing a spurious session reset during normal note playback. A long static value — chosen conservatively to exceed the longest possible note — forces the receiver to hold session RAM for the full static interval after the transmitter disappears, delaying reconnection by the full watchdog period unnecessarily. Neither choice can simultaneously avoid false positives on long notes and minimise reconnection delay after a genuine link failure.
 
@@ -1558,7 +1558,7 @@ The complete watchdog logic — from session arming through conditional erasure 
 
 A critical invariant must hold: the receiver's watchdog must never fire while the transmitter is still in the middle of a legitimate retry storm — that is, the receiver must not zero `s_sessionNonce` before the transmitter has finished its `MAX_RETRIES × ACK_TIMEOUT_MS` retry cycle and entered `TxState::RECONNECTING`. If this race condition could occur, the first `HelloPacket` of the reconnect handshake would be processed by a receiver that has already released its session nonce, which is the correct outcome. However, a `DataPacket` retransmission arriving at the receiver after `s_sessionNonce` has been zeroed would fail MAC verification and produce a NACK — escalating an already-degraded link into an unrecoverable desynchronization until the next SYN handshake completes.
 
-The protocol eliminates this race by construction. The worst-case TX retry storm duration is bounded at 2500 ms, as derived earlier in the "Runaway Retry Prevention and the Self-Healing Suspension" subsection in §5.3.
+The protocol eliminates this race by construction. The worst-case TX retry storm duration is bounded at 2500 ms, as derived earlier in the "Runaway Retry Prevention and the Self-Healing Suspension" subsection in Section 5.3.
 
 The grace period satisfies:
 
