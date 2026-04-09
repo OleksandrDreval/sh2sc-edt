@@ -1,0 +1,20 @@
+<map id="ReceiverNode/ReceiverNode.ino" name="ReceiverNode/ReceiverNode.ino">
+<area shape="rect" id="Node000001" title="SH2SC&#45;EDT — Receiver Node B (&quot;The Synthesizer&quot;) firmware." alt="" coords="135,5,367,31"/>
+<area shape="rect" id="Node000002" href="$receiver_8h.html" title="SH2SC&#45;EDT — Receiver Node B (&quot;The Synthesizer&quot;) public interface." alt="" coords="131,86,217,111"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="242,33,197,78,193,74,238,29"/>
+<area shape="rect" id="Node000009" title=" " alt="" coords="241,79,416,119"/>
+<area shape="poly" id="edge9_Node000001_Node000009" title=" " alt="" coords="265,29,302,67,299,71,261,33"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="100,240,184,265"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="174,112,150,227,145,226,169,111"/>
+<area shape="rect" id="Node000004" href="$ReceiverNode_2protocol_8h.html" title="Shared C2P&#45;ARQ protocol definitions for SH2SC&#45;EDT (Receiver Node B)." alt="" coords="7,167,93,192"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="157,114,81,161,78,157,154,109"/>
+<area shape="rect" id="Node000006" href="$ReceiverNode_2csprng_8h.html" title="ChaCha20&#45;based CSPRNG for SH2SC&#45;EDT — Receiver Node B (ATmega328P)." alt="" coords="174,167,251,192"/>
+<area shape="poly" id="edge5_Node000002_Node000006" title=" " alt="" coords="182,110,203,153,198,155,177,113"/>
+<area shape="rect" id="Node000008" title=" " alt="" coords="276,167,387,192"/>
+<area shape="poly" id="edge8_Node000002_Node000008" title=" " alt="" coords="198,109,297,158,295,163,196,114"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="5,240,76,265"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="51,193,47,227,41,226,46,192"/>
+<area shape="poly" id="edge6_Node000006_Node000003" title=" " alt="" coords="203,194,165,232,161,228,199,190"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="208,240,292,265"/>
+<area shape="poly" id="edge7_Node000006_Node000007" title=" " alt="" coords="221,191,240,227,235,229,216,194"/>
+</map>

@@ -1,0 +1,30 @@
+<map id="rx_loop" name="rx_loop">
+<area shape="rect" id="Node000001" title="Execute one non&#45;blocking C2P&#45;ARQ FSM tick for the Receiver node." alt="" coords="5,144,76,169"/>
+<area shape="rect" id="Node000002" href="$ReceiverNode_8ino.html#a20ac5ec1e34e1017436f429d0d1fc4c6" title="I2C LCD display object (Aip31068, 16×2, address 0x3E)." alt="" coords="721,69,763,94"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="48,142,78,105,99,85,123,69,178,44,225,34,334,27,506,4,543,3,582,6,625,14,674,29,699,41,720,57,717,61,696,46,672,33,623,19,581,11,543,8,507,9,335,32,225,39,180,49,125,73,102,89,82,109,52,145"/>
+<area shape="rect" id="Node000003" href="$ReceiverNode_8ino.html#a3ee8b06d42b5b683ab0c0823e598eb48" title="Consume one incoming UART byte and advance the frame&#45;assembly FSM." alt="" coords="124,144,287,169"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="76,154,110,154,110,159,76,159"/>
+<area shape="rect" id="Node000005" href="$ReceiverNode_8ino.html#ab23882cb03aae41525077d987659c100" title="Flush the UART RX FIFO and reset the byte&#45;parser FSM to WAIT_AA." alt="" coords="559,296,654,321"/>
+<area shape="poly" id="edge16_Node000001_Node000005" title=" " alt="" coords="59,167,104,200,170,243,249,285,292,303,335,316,390,325,446,327,545,318,546,323,446,332,389,331,334,322,290,308,247,290,167,248,101,205,56,171"/>
+<area shape="rect" id="Node000007" href="$ReceiverNode_8ino.html#ab00875728004e2f49d06c4666466769c" title="Stop the currently playing note and clear the playback flag." alt="" coords="566,194,647,220"/>
+<area shape="poly" id="edge17_Node000001_Node000007" title=" " alt="" coords="77,166,125,179,243,195,362,203,552,206,552,211,362,209,243,200,123,184,76,172"/>
+<area shape="rect" id="Node000008" href="$ReceiverNode_8ino.html#ad480eab0452677c1a97acc1999040141" title="Refresh the RX LCD with the current FSM state and last packet result." alt="" coords="540,44,673,69"/>
+<area shape="poly" id="edge18_Node000001_Node000008" title=" " alt="" coords="67,141,181,93,256,67,334,48,378,43,413,43,492,48,526,49,526,55,492,54,413,49,379,48,335,54,257,72,182,98,69,146"/>
+<area shape="rect" id="Node000004" href="$ReceiverNode_8ino.html#a0d62676882b82880ba49b1cc3f82eecd" title="Run the full ChaCha20&#45;Poly1305 pipeline; play the note only on MAC success." alt="" coords="335,94,492,120"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="259,141,345,120,346,126,260,146"/>
+<area shape="poly" id="edge14_Node000003_Node000005" title=" " alt="" coords="217,168,263,225,297,256,336,281,389,299,445,309,498,312,546,311,546,317,498,317,444,314,387,304,334,285,293,260,259,228,213,171"/>
+<area shape="poly" id="edge15_Node000003_Node000008" title=" " alt="" coords="221,141,270,109,301,92,334,79,383,67,433,58,526,52,526,57,434,64,384,72,336,84,303,97,273,114,224,146"/>
+<area shape="rect" id="Node000009" href="$ReceiverNode_8ino.html#a10f4c4e5e502a2b7eca688dce917ae53" title="Authenticate and process a FLAG_FIN session&#45;teardown packet." alt="" coords="347,245,480,270"/>
+<area shape="poly" id="edge10_Node000003_Node000009" title=" " alt="" coords="234,167,375,236,373,241,231,172"/>
+<area shape="rect" id="Node000010" href="$ReceiverNode_8ino.html#a58a3904b2c811f16b49b3cf1058a2b17" title="Store the received session nonce and install MASTER_PSK into the cipher." alt="" coords="344,144,483,169"/>
+<area shape="poly" id="edge13_Node000003_Node000010" title=" " alt="" coords="287,154,330,154,330,159,287,159"/>
+<area shape="poly" id="edge4_Node000004_Node000002" title=" " alt="" coords="492,98,707,82,708,87,493,104"/>
+<area shape="poly" id="edge5_Node000004_Node000005" title=" " alt="" coords="476,118,494,129,514,153,522,177,529,203,542,231,585,284,581,287,538,234,524,204,517,179,509,156,490,133,473,122"/>
+<area shape="rect" id="Node000006" href="$ReceiverNode_8ino.html#a409ad6196918fc62158938eb4e92f7e4" title="Start non&#45;blocking note playback on the piezo buzzer." alt="" coords="565,145,648,170"/>
+<area shape="poly" id="edge6_Node000004_Node000006" title=" " alt="" coords="463,117,552,141,551,146,462,122"/>
+<area shape="poly" id="edge7_Node000004_Node000007" title=" " alt="" coords="470,117,493,129,509,142,518,155,527,168,542,181,555,188,552,193,538,185,523,172,514,158,505,146,491,133,468,122"/>
+<area shape="poly" id="edge8_Node000004_Node000008" title=" " alt="" coords="462,92,544,70,545,75,463,97"/>
+<area shape="poly" id="edge9_Node000008_Node000002" title=" " alt="" coords="674,66,708,73,707,78,673,71"/>
+<area shape="poly" id="edge11_Node000009_Node000002" title=" " alt="" coords="481,266,527,268,577,265,627,253,672,230,698,204,716,171,728,137,734,107,740,109,733,139,721,173,702,207,675,234,629,258,578,270,527,273,480,271"/>
+<area shape="poly" id="edge12_Node000009_Node000005" title=" " alt="" coords="463,268,547,290,545,295,462,273"/>
+</map>

@@ -1,0 +1,5 @@
+<map id="updateTxDisplay" name="updateTxDisplay">
+<area shape="rect" id="Node000001" title="Refresh the TX LCD with the current ARQ status and FSM state label." alt="" coords="5,5,137,31"/>
+<area shape="rect" id="Node000002" href="$TransmitterNode_8ino.html#ac1523167aa5c6b946749ddbefbe0cb32" title="I2C LCD — 16 columns x 2 rows, Aip31068&#45;compatible controller." alt="" coords="185,5,227,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="138,15,171,15,171,21,138,21"/>
+</map>

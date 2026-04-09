@@ -1,0 +1,16 @@
+<map id="setup" name="setup">
+<area shape="rect" id="Node000001" title="Arduino sketch entry point — delegates to tx_setup()." alt="" coords="5,80,64,105"/>
+<area shape="rect" id="Node000002" href="$TransmitterNode_8ino.html#acac5a7229f0ffac831a01151ec73f062" title="Initialise TX hardware and seed the CSPRNG. Called once from setup()." alt="" coords="112,80,191,105"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="64,90,98,90,98,95,64,95"/>
+<area shape="rect" id="Node000003" href="$TransmitterNode_8ino.html#aa3ea3de38898a330f3254415768bd79e" title="Harvest 256 bits of hardware entropy and write them to outputSeed (TX variant)." alt="" coords="239,5,397,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="170,77,238,40,255,33,257,38,240,44,173,82"/>
+<area shape="rect" id="Node000004" href="$TransmitterNode_2csprng_8h.html#ae0da75974cdce1f5752c2bb546305bc6" title="Seed the ChaCha20 CSPRNG with 256 bits of hardware entropy." alt="" coords="269,55,367,80"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="190,84,255,74,256,79,191,89"/>
+<area shape="rect" id="Node000006" href="$TransmitterNode_8ino.html#ac1523167aa5c6b946749ddbefbe0cb32" title="I2C LCD — 16 columns x 2 rows, Aip31068&#45;compatible controller." alt="" coords="504,131,545,156"/>
+<area shape="poly" id="edge5_Node000002_Node000006" title=" " alt="" coords="191,95,491,136,490,141,191,101"/>
+<area shape="rect" id="Node000007" href="$TransmitterNode_8ino.html#a28b75d7408d98c51c24e735af0e9552f" title="Refresh the TX LCD with the current ARQ status and FSM state label." alt="" coords="252,156,384,181"/>
+<area shape="poly" id="edge6_Node000002_Node000007" title=" " alt="" coords="177,103,240,134,272,148,270,153,238,139,175,108"/>
+<area shape="rect" id="Node000005" href="$ReceiverNode_2csprng_8h.html#ade2c2e7611dd842d0956c92589d6cad8" title="Produce the next 64&#45;byte ChaCha20 keystream block into s_keystreamBuf." alt="" coords="445,55,604,80"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="367,65,431,65,431,70,367,70"/>
+<area shape="poly" id="edge7_Node000007_Node000006" title=" " alt="" coords="384,158,490,145,490,150,385,163"/>
+</map>

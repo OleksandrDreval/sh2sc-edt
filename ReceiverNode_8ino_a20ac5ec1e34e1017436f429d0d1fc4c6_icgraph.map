@@ -1,0 +1,25 @@
+<map id="lcd" name="lcd">
+<area shape="rect" id="Node000001" title="I2C LCD display object (Aip31068, 16×2, address 0x3E)." alt="" coords="820,118,861,143"/>
+<area shape="rect" id="Node000002" href="$ReceiverNode_8ino.html#a0d62676882b82880ba49b1cc3f82eecd" title="Authenticate and decrypt a DataPacket (FLAG_DAT); play the note on MAC success." alt="" coords="433,201,591,226"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="808,146,773,159,674,184,584,203,583,198,673,179,771,153,806,141"/>
+<area shape="rect" id="Node000004" href="$ReceiverNode_8ino.html#a3220eab9de89738ed514928a1a59dc80" title="Execute one non&#45;blocking C2P&#45;ARQ FSM tick for the Receiver node." alt="" coords="104,99,175,125"/>
+<area shape="poly" id="edge7_Node000001_Node000004" title=" " alt="" coords="816,110,795,91,771,76,723,56,684,47,590,39,486,23,402,10,363,8,322,11,276,21,224,38,201,51,181,68,151,101,147,98,177,64,198,47,222,34,275,16,321,6,363,3,403,5,486,18,591,33,685,42,725,51,773,71,799,87,820,106"/>
+<area shape="rect" id="Node000006" href="$ReceiverNode_8ino.html#a10f4c4e5e502a2b7eca688dce917ae53" title="Authenticate a FLAG_FIN teardown packet and close the session on MAC success." alt="" coords="639,245,772,270"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="828,158,805,193,774,227,742,247,739,242,770,223,801,190,824,155"/>
+<area shape="rect" id="Node000007" href="$ReceiverNode_8ino.html#af5d28e81c93d51f8da867ec78430d78e" title="Initialise RX hardware and seed the CSPRNG. Called once from setup()." alt="" coords="473,49,551,74"/>
+<area shape="poly" id="edge8_Node000001_Node000007" title=" " alt="" coords="806,120,771,108,652,83,551,68,552,63,652,77,773,103,808,115"/>
+<area shape="rect" id="Node000009" href="$ReceiverNode_8ino.html#ad480eab0452677c1a97acc1999040141" title="Refresh the RX LCD with the current FSM state and last packet result." alt="" coords="639,118,772,143"/>
+<area shape="poly" id="edge10_Node000001_Node000009" title=" " alt="" coords="806,133,772,133,772,128,806,128"/>
+<area shape="rect" id="Node000003" href="$ReceiverNode_8ino.html#a3ee8b06d42b5b683ab0c0823e598eb48" title="Consume one incoming UART byte and advance the frame&#45;assembly FSM." alt="" coords="223,175,385,201"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="419,205,385,201,386,195,420,200"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="262,172,167,127,169,122,264,167"/>
+<area shape="rect" id="Node000005" href="$ReceiverNode_8ino.html#afe461d27b9c48d5921c00d521181f12f" title="Arduino main loop — delegates to rx_loop()." alt="" coords="5,99,56,125"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="90,115,56,115,56,109,90,109"/>
+<area shape="poly" id="edge6_Node000006_Node000003" title=" " alt="" coords="625,261,532,256,433,241,377,224,330,203,332,198,378,219,434,236,533,251,625,256"/>
+<area shape="rect" id="Node000008" href="$ReceiverNode_8ino.html#a4fc01d736fe50cf5b977f755b675f11d" title="Arduino entry point — delegates to rx_setup()." alt="" coords="275,49,333,74"/>
+<area shape="poly" id="edge9_Node000007_Node000008" title=" " alt="" coords="459,64,333,64,333,59,459,59"/>
+<area shape="poly" id="edge11_Node000009_Node000002" title=" " alt="" coords="665,152,592,184,546,203,544,198,590,179,662,147"/>
+<area shape="poly" id="edge12_Node000009_Node000003" title=" " alt="" coords="626,145,386,179,385,174,625,139"/>
+<area shape="poly" id="edge13_Node000009_Node000004" title=" " alt="" coords="625,131,175,116,175,111,625,125"/>
+<area shape="poly" id="edge14_Node000009_Node000007" title=" " alt="" coords="655,116,548,77,550,72,657,111"/>
+</map>

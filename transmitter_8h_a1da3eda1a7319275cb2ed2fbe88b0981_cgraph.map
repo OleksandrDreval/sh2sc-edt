@@ -1,0 +1,5 @@
+<map id="suspendSession" name="suspendSession">
+<area shape="rect" id="Node000001" title="Suspend the current C2P&#45;ARQ session and enter the Self&#45;Healing reconnect loop." alt="" coords="5,5,132,31"/>
+<area shape="rect" id="Node000002" href="$TransmitterNode_8ino.html#ac1523167aa5c6b946749ddbefbe0cb32" title="I2C LCD — 16 columns x 2 rows, Aip31068&#45;compatible controller." alt="" coords="180,5,221,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="132,15,166,15,166,21,132,21"/>
+</map>

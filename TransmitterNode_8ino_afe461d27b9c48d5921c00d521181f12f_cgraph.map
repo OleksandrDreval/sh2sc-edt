@@ -1,0 +1,30 @@
+<map id="loop" name="loop">
+<area shape="rect" id="Node000001" title="Arduino sketch main loop — delegates to tx_loop() on every iteration." alt="" coords="5,131,56,156"/>
+<area shape="rect" id="Node000002" href="$TransmitterNode_8ino.html#aadfdb520151df13d9761a5630a1bcada" title="Execute one non&#45;blocking C2P&#45;ARQ FSM tick. Called repeatedly from loop()." alt="" coords="104,131,175,156"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="56,141,90,141,90,146,56,146"/>
+<area shape="rect" id="Node000003" href="$TransmitterNode_8ino.html#ae918ec46ee2ed96b0d0536ba35464e3f" title="Snapshot the note payload and delegate to sendPacket() for encryption and transmission." alt="" coords="223,5,375,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="146,129,175,86,196,61,221,40,231,34,234,39,224,44,200,65,179,89,150,132"/>
+<area shape="rect" id="Node000006" href="$TransmitterNode_8ino.html#adbe54daa831536c1f5a84ad3468c085f" title="Read and debounce the start button (millis&#45;based falling&#45;edge detector)." alt="" coords="234,55,363,80"/>
+<area shape="poly" id="edge5_Node000002_Node000006" title=" " alt="" coords="162,128,221,97,252,83,254,88,224,102,164,133"/>
+<area shape="rect" id="Node000007" href="$TransmitterNode_8ino.html#a5c5ec0bc9a2313557bf0dc7396def726" title="Construct and transmit a FLAG_FIN session&#45;teardown packet." alt="" coords="444,68,559,93"/>
+<area shape="poly" id="edge6_Node000002_Node000007" title=" " alt="" coords="175,135,430,90,431,95,176,140"/>
+<area shape="rect" id="Node000008" href="$TransmitterNode_8ino.html#a5b27227bb7bdbf3bfccf0daaaf101fe9" title="Generate a fresh 12&#45;byte CSPRNG nonce and broadcast it as a FLAG_SYN HelloPacket." alt="" coords="234,156,363,181"/>
+<area shape="poly" id="edge8_Node000002_Node000008" title=" " alt="" coords="175,146,221,154,220,159,175,152"/>
+<area shape="rect" id="Node000011" href="$TransmitterNode_8ino.html#a1da3eda1a7319275cb2ed2fbe88b0981" title="Perform an unclean session teardown and enter the Self&#45;Healing reconnect loop." alt="" coords="235,205,362,231"/>
+<area shape="poly" id="edge12_Node000002_Node000011" title=" " alt="" coords="161,154,224,190,243,198,241,203,221,195,158,159"/>
+<area shape="rect" id="Node000013" href="$TransmitterNode_8ino.html#a28b75d7408d98c51c24e735af0e9552f" title="Refresh the TX LCD with the current ARQ status and FSM state label." alt="" coords="233,255,365,280"/>
+<area shape="poly" id="edge14_Node000002_Node000013" title=" " alt="" coords="150,155,179,197,200,221,224,241,234,247,231,251,221,246,196,225,175,200,146,158"/>
+<area shape="rect" id="Node000004" href="$TransmitterNode_8ino.html#aff663d739e4468a7f9ab9cb0c1569fec" title=" " alt="" coords="454,12,549,37"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="375,18,440,20,440,25,375,23"/>
+<area shape="rect" id="Node000005" href="$TransmitterNode_8ino.html#a2b7375ec6d41ac37e2969dbdad1857e8" title="Discard all bytes currently waiting in the hardware UART RX FIFO." alt="" coords="659,68,755,93"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="550,35,647,62,646,67,548,40"/>
+<area shape="poly" id="edge7_Node000007_Node000005" title=" " alt="" coords="559,78,646,78,646,83,559,83"/>
+<area shape="poly" id="edge9_Node000008_Node000005" title=" " alt="" coords="358,153,645,91,646,96,359,159"/>
+<area shape="rect" id="Node000009" href="$TransmitterNode_2csprng_8h.html#a2b55c3d985e6ca11b52b762444ceb9d1" title="Return 32 bits of CSPRNG output (non&#45;blocking)." alt="" coords="423,169,580,195"/>
+<area shape="poly" id="edge10_Node000008_Node000009" title=" " alt="" coords="364,170,409,173,409,179,364,176"/>
+<area shape="rect" id="Node000010" href="$ReceiverNode_2csprng_8h.html#ade2c2e7611dd842d0956c92589d6cad8" title="Produce the next 64&#45;byte ChaCha20 keystream block into s_keystreamBuf." alt="" coords="628,169,787,195"/>
+<area shape="poly" id="edge11_Node000009_Node000010" title=" " alt="" coords="580,179,614,179,614,185,580,185"/>
+<area shape="rect" id="Node000012" href="$TransmitterNode_8ino.html#ac1523167aa5c6b946749ddbefbe0cb32" title="I2C LCD — 16 columns x 2 rows, Aip31068&#45;compatible controller." alt="" coords="481,231,522,256"/>
+<area shape="poly" id="edge13_Node000011_Node000012" title=" " alt="" coords="363,223,467,236,466,242,362,229"/>
+<area shape="poly" id="edge15_Node000013_Node000012" title=" " alt="" coords="365,257,467,245,467,250,365,262"/>
+</map>

@@ -1,0 +1,11 @@
+<map id="generateEntropyPool" name="generateEntropyPool">
+<area shape="rect" id="Node000001" title="Harvest 256 bits of hardware entropy and fill outputSeed (RX variant)." alt="" coords="5,80,164,105"/>
+<area shape="rect" id="Node000002" href="$ReceiverNode_8ino.html#a4d94480dc1ef08baec83709005cbfb13" title="Single&#45;step cryptographic entropy mixer — rotate&#45;left XOR fold." alt="" coords="227,5,324,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="117,77,211,40,227,33,229,38,213,44,119,82"/>
+<area shape="rect" id="Node000003" href="$TransmitterNode_8ino.html#a4d94480dc1ef08baec83709005cbfb13" title="One mixing step of the entropy accumulation sponge." alt="" coords="227,55,324,80"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="164,80,213,73,214,78,164,85"/>
+<area shape="rect" id="Node000004" href="$ReceiverNode_8ino.html#a1933a209dc27cc038a843a10f00b66f7" title="Ring oscillator ISR — increments pulse counter on each RISING edge." alt="" coords="212,104,339,129"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="164,100,199,104,198,110,164,105"/>
+<area shape="rect" id="Node000005" href="$TransmitterNode_8ino.html#a1933a209dc27cc038a843a10f00b66f7" title="INT0 interrupt service routine — counts ring oscillator rising edges." alt="" coords="212,153,339,179"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="120,103,229,146,227,151,118,108"/>
+</map>

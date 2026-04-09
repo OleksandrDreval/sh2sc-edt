@@ -1,0 +1,5 @@
+<map id="updateRxDisplay" name="updateRxDisplay">
+<area shape="rect" id="Node000001" title="Refresh the RX LCD with the current FSM state and last packet result." alt="" coords="5,5,139,31"/>
+<area shape="rect" id="Node000002" href="$ReceiverNode_8ino.html#a20ac5ec1e34e1017436f429d0d1fc4c6" title="I2C LCD display object (Aip31068, 16×2, address 0x3E)." alt="" coords="187,5,228,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="139,15,173,15,173,21,139,21"/>
+</map>

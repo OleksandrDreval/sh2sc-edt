@@ -1,0 +1,7 @@
+<map id="formAndSendPacket" name="formAndSendPacket">
+<area shape="rect" id="Node000001" title="High&#45;level wrapper called by the SENDING FSM state." alt="" coords="5,5,157,31"/>
+<area shape="rect" id="Node000002" href="$TransmitterNode_8ino.html#aff663d739e4468a7f9ab9cb0c1569fec" title=" " alt="" coords="205,5,300,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="158,15,192,15,192,21,158,21"/>
+<area shape="rect" id="Node000003" href="$TransmitterNode_8ino.html#a2b7375ec6d41ac37e2969dbdad1857e8" title="Discard all bytes currently waiting in the hardware UART RX FIFO." alt="" coords="348,5,444,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="300,15,334,15,334,21,300,21"/>
+</map>

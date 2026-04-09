@@ -1,0 +1,7 @@
+<map id="processFinPacket" name="processFinPacket">
+<area shape="rect" id="Node000001" title="Authenticate a FLAG_FIN teardown packet and close the session on MAC success." alt="" coords="5,31,139,56"/>
+<area shape="rect" id="Node000002" href="$ReceiverNode_8ino.html#a20ac5ec1e34e1017436f429d0d1fc4c6" title="I2C LCD display object (Aip31068, 16×2, address 0x3E)." alt="" coords="213,5,255,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="139,30,199,21,200,26,139,36"/>
+<area shape="rect" id="Node000003" href="$ReceiverNode_8ino.html#ab23882cb03aae41525077d987659c100" title="Flush the UART RX FIFO and reset the byte&#45;parser FSM to WAIT_AA." alt="" coords="187,55,281,80"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="139,51,174,56,173,61,139,56"/>
+</map>

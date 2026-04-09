@@ -1,0 +1,16 @@
+<map id="resetParser" name="resetParser">
+<area shape="rect" id="Node000001" title="Flush the UART RX FIFO and reset the byte&#45;parser FSM to WAIT_AA." alt="" coords="639,81,733,107"/>
+<area shape="rect" id="Node000002" href="$ReceiverNode_8ino.html#a0d62676882b82880ba49b1cc3f82eecd" title="Authenticate and decrypt a DataPacket (FLAG_DAT); play the note on MAC success." alt="" coords="433,5,591,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="645,78,590,52,544,33,546,28,592,48,647,73"/>
+<area shape="rect" id="Node000003" href="$ReceiverNode_8ino.html#a3ee8b06d42b5b683ab0c0823e598eb48" title="Consume one incoming UART byte and advance the frame&#45;assembly FSM." alt="" coords="223,81,385,107"/>
+<area shape="poly" id="edge7_Node000001_Node000003" title=" " alt="" coords="625,97,386,97,386,91,625,91"/>
+<area shape="rect" id="Node000004" href="$ReceiverNode_8ino.html#a3220eab9de89738ed514928a1a59dc80" title="Execute one non&#45;blocking C2P&#45;ARQ FSM tick for the Receiver node." alt="" coords="104,132,175,157"/>
+<area shape="poly" id="edge8_Node000001_Node000004" title=" " alt="" coords="657,117,626,134,591,147,533,159,473,166,355,169,251,162,175,153,176,148,251,157,355,163,473,161,532,154,590,142,624,129,654,112"/>
+<area shape="rect" id="Node000006" href="$ReceiverNode_8ino.html#a10f4c4e5e502a2b7eca688dce917ae53" title="Authenticate a FLAG_FIN teardown packet and close the session on MAC success." alt="" coords="445,107,579,132"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="625,105,579,112,579,107,625,100"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="465,38,341,84,339,79,463,33"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="250,113,176,136,174,131,248,108"/>
+<area shape="rect" id="Node000005" href="$ReceiverNode_8ino.html#afe461d27b9c48d5921c00d521181f12f" title="Arduino main loop — delegates to rx_loop()." alt="" coords="5,132,56,157"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="90,147,56,147,56,142,90,142"/>
+<area shape="poly" id="edge6_Node000006_Node000003" title=" " alt="" coords="431,112,385,107,386,101,432,107"/>
+</map>

@@ -1,0 +1,9 @@
+<map id="sendPacket" name="sendPacket">
+<area shape="rect" id="Node000001" title=" " alt="" coords="423,5,517,31"/>
+<area shape="rect" id="Node000002" href="$TransmitterNode_8ino.html#ae918ec46ee2ed96b0d0536ba35464e3f" title="High&#45;level wrapper called by the SENDING FSM state." alt="" coords="223,5,375,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="409,21,375,21,375,15,409,15"/>
+<area shape="rect" id="Node000003" href="$TransmitterNode_8ino.html#aadfdb520151df13d9761a5630a1bcada" title="Execute one non&#45;blocking FSM tick for the Transmitter node." alt="" coords="104,5,175,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="209,21,175,21,175,15,209,15"/>
+<area shape="rect" id="Node000004" href="$TransmitterNode_8ino.html#afe461d27b9c48d5921c00d521181f12f" title="Arduino sketch main loop — delegates to tx_loop() on every iteration." alt="" coords="5,5,56,31"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="90,21,56,21,56,15,90,15"/>
+</map>

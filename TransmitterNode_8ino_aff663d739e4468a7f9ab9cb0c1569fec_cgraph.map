@@ -1,0 +1,5 @@
+<map id="sendPacket" name="sendPacket">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,5,100,31"/>
+<area shape="rect" id="Node000002" href="$TransmitterNode_8ino.html#a2b7375ec6d41ac37e2969dbdad1857e8" title="Discard all bytes currently waiting in the hardware UART RX FIFO." alt="" coords="148,5,244,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="100,15,134,15,134,21,100,21"/>
+</map>

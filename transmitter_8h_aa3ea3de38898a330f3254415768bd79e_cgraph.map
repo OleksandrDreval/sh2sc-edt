@@ -1,0 +1,7 @@
+<map id="generateEntropyPool" name="generateEntropyPool">
+<area shape="rect" id="Node000001" title="Harvest 256 bits of hardware entropy and write them to outputSeed." alt="" coords="5,31,164,56"/>
+<area shape="rect" id="Node000002" href="$TransmitterNode_8ino.html#a4d94480dc1ef08baec83709005cbfb13" title="One mixing step of the entropy accumulation sponge." alt="" coords="227,5,324,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="164,30,213,24,214,29,164,35"/>
+<area shape="rect" id="Node000003" href="$TransmitterNode_8ino.html#a1933a209dc27cc038a843a10f00b66f7" title="INT0 interrupt service routine — counts ring oscillator rising edges." alt="" coords="212,55,339,80"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="164,51,199,55,198,60,164,56"/>
+</map>

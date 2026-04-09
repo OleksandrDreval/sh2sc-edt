@@ -1,0 +1,11 @@
+<map id="generateEntropyPool" name="generateEntropyPool">
+<area shape="rect" id="Node000001" title="Harvest 256 bits of hardware entropy and write them to outputSeed (RX variant)." alt="" coords="239,31,397,56"/>
+<area shape="rect" id="Node000002" href="$ReceiverNode_8ino.html#af5d28e81c93d51f8da867ec78430d78e" title="Initialise RX hardware and seed the CSPRNG. Called once from setup()." alt="" coords="112,5,191,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="225,32,191,27,191,21,225,27"/>
+<area shape="rect" id="Node000004" href="$TransmitterNode_8ino.html#acac5a7229f0ffac831a01151ec73f062" title="Initialise TX hardware: UART, I2C LCD, button pin, ring&#45;oscillator entropy." alt="" coords="112,55,191,80"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="225,59,191,64,191,59,225,54"/>
+<area shape="rect" id="Node000003" href="$ReceiverNode_8ino.html#a4fc01d736fe50cf5b977f755b675f11d" title="Arduino entry point — delegates to rx_setup()." alt="" coords="5,5,64,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="98,21,64,21,64,15,98,15"/>
+<area shape="rect" id="Node000005" href="$TransmitterNode_8ino.html#a4fc01d736fe50cf5b977f755b675f11d" title="Arduino sketch entry point — delegates to tx_setup()." alt="" coords="5,55,64,80"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="98,70,64,70,64,65,98,65"/>
+</map>

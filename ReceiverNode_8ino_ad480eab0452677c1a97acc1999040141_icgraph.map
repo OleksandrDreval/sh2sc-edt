@@ -1,0 +1,17 @@
+<map id="updateRxDisplay" name="updateRxDisplay">
+<area shape="rect" id="Node000001" title="Refresh the RX LCD with the current FSM state and last packet result." alt="" coords="639,81,772,107"/>
+<area shape="rect" id="Node000002" href="$ReceiverNode_8ino.html#a0d62676882b82880ba49b1cc3f82eecd" title="Authenticate and decrypt a DataPacket (FLAG_DAT); play the note on MAC success." alt="" coords="433,5,591,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="658,79,544,33,546,28,660,74"/>
+<area shape="rect" id="Node000003" href="$ReceiverNode_8ino.html#a3ee8b06d42b5b683ab0c0823e598eb48" title="Consume one incoming UART byte and advance the frame&#45;assembly FSM." alt="" coords="223,56,385,81"/>
+<area shape="poly" id="edge5_Node000001_Node000003" title=" " alt="" coords="625,92,385,76,386,71,625,86"/>
+<area shape="rect" id="Node000004" href="$ReceiverNode_8ino.html#a3220eab9de89738ed514928a1a59dc80" title="Execute one non&#45;blocking C2P&#45;ARQ FSM tick for the Receiver node." alt="" coords="104,81,175,107"/>
+<area shape="poly" id="edge6_Node000001_Node000004" title=" " alt="" coords="625,97,175,97,175,91,625,91"/>
+<area shape="rect" id="Node000006" href="$ReceiverNode_8ino.html#af5d28e81c93d51f8da867ec78430d78e" title="Initialise RX hardware and seed the CSPRNG. Called once from setup()." alt="" coords="473,157,551,183"/>
+<area shape="poly" id="edge7_Node000001_Node000006" title=" " alt="" coords="660,114,546,160,544,155,658,109"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="446,37,357,59,356,53,445,31"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="210,86,175,91,174,86,209,81"/>
+<area shape="rect" id="Node000005" href="$ReceiverNode_8ino.html#afe461d27b9c48d5921c00d521181f12f" title="Arduino main loop — delegates to rx_loop()." alt="" coords="5,81,56,107"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="90,97,56,97,56,91,90,91"/>
+<area shape="rect" id="Node000007" href="$ReceiverNode_8ino.html#a4fc01d736fe50cf5b977f755b675f11d" title="Arduino entry point — delegates to rx_setup()." alt="" coords="275,157,333,183"/>
+<area shape="poly" id="edge8_Node000006_Node000007" title=" " alt="" coords="459,173,333,173,333,167,459,167"/>
+</map>

@@ -1,0 +1,7 @@
+<map id="TransmitterNode/melody.h" name="TransmitterNode/melody.h">
+<area shape="rect" id="Node000001" title="PROGMEM melody data for SH2SC&#45;EDT — Transmitter Node A." alt="" coords="15,5,208,31"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,79,89,104"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="103,33,69,70,65,67,99,29"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="113,79,240,104"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="124,29,159,67,155,70,120,33"/>
+</map>

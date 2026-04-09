@@ -1,0 +1,5 @@
+<map id="rx_setup" name="rx_setup">
+<area shape="rect" id="Node000001" title="Initialise RX hardware, seed the CSPRNG, and display the idle screen." alt="" coords="112,5,191,31"/>
+<area shape="rect" id="Node000002" href="$ReceiverNode_8ino.html#a4fc01d736fe50cf5b977f755b675f11d" title="Arduino entry point — delegates to rx_setup()." alt="" coords="5,5,64,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="98,21,64,21,64,15,98,15"/>
+</map>

@@ -1,0 +1,11 @@
+<map id="updateTxDisplay" name="updateTxDisplay">
+<area shape="rect" id="Node000001" title="Refresh the TX LCD with the current ARQ status and FSM state label." alt="" coords="239,31,371,56"/>
+<area shape="rect" id="Node000002" href="$TransmitterNode_8ino.html#aadfdb520151df13d9761a5630a1bcada" title="Execute one non&#45;blocking FSM tick for the Transmitter node." alt="" coords="116,5,187,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="225,33,186,26,187,21,226,28"/>
+<area shape="rect" id="Node000004" href="$TransmitterNode_8ino.html#acac5a7229f0ffac831a01151ec73f062" title="Initialise TX hardware: UART, I2C LCD, button pin, ring&#45;oscillator entropy." alt="" coords="112,55,191,80"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="226,58,191,64,190,59,225,53"/>
+<area shape="rect" id="Node000003" href="$TransmitterNode_8ino.html#afe461d27b9c48d5921c00d521181f12f" title="Arduino sketch main loop — delegates to tx_loop() on every iteration." alt="" coords="9,5,60,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="102,21,60,21,60,15,102,15"/>
+<area shape="rect" id="Node000005" href="$TransmitterNode_8ino.html#a4fc01d736fe50cf5b977f755b675f11d" title="Arduino sketch entry point — delegates to tx_setup()." alt="" coords="5,55,64,80"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="98,70,64,70,64,65,98,65"/>
+</map>

@@ -1,0 +1,24 @@
+<map id="setup" name="setup">
+<area shape="rect" id="Node000001" title="Arduino entry point — delegates to rx_setup()." alt="" coords="5,203,64,228"/>
+<area shape="rect" id="Node000002" href="$ReceiverNode_8ino.html#af5d28e81c93d51f8da867ec78430d78e" title="Initialise RX hardware, seed the CSPRNG, and display the idle screen." alt="" coords="112,203,191,228"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="64,213,98,213,98,218,64,218"/>
+<area shape="rect" id="Node000003" href="$ReceiverNode_8ino.html#aa3ea3de38898a330f3254415768bd79e" title="Harvest 256 bits of hardware entropy and fill outputSeed (RX variant)." alt="" coords="239,104,397,129"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="172,200,282,134,285,139,175,205"/>
+<area shape="rect" id="Node000008" href="$TransmitterNode_2csprng_8h.html#ae0da75974cdce1f5752c2bb546305bc6" title="Seed the ChaCha20 CSPRNG with 256 bits of hardware entropy." alt="" coords="269,177,367,203"/>
+<area shape="poly" id="edge7_Node000002_Node000008" title=" " alt="" coords="190,207,255,197,256,202,191,212"/>
+<area shape="rect" id="Node000010" href="$ReceiverNode_8ino.html#a20ac5ec1e34e1017436f429d0d1fc4c6" title="I2C LCD display object (Aip31068, 16×2, address 0x3E)." alt="" coords="504,265,545,291"/>
+<area shape="poly" id="edge9_Node000002_Node000010" title=" " alt="" coords="191,219,491,270,490,275,190,224"/>
+<area shape="rect" id="Node000011" href="$ReceiverNode_8ino.html#ad480eab0452677c1a97acc1999040141" title="Refresh the RX LCD with the current FSM state and last packet result." alt="" coords="251,279,385,304"/>
+<area shape="poly" id="edge10_Node000002_Node000011" title=" " alt="" coords="177,226,240,257,272,271,270,276,238,262,175,230"/>
+<area shape="rect" id="Node000004" href="$ReceiverNode_8ino.html#a4d94480dc1ef08baec83709005cbfb13" title="Single&#45;step cryptographic entropy mixer — rotate&#45;left XOR fold." alt="" coords="476,5,573,31"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="336,102,384,71,444,40,462,33,464,38,446,44,387,76,339,106"/>
+<area shape="rect" id="Node000005" href="$TransmitterNode_8ino.html#a4d94480dc1ef08baec83709005cbfb13" title="One mixing step of the entropy accumulation sponge." alt="" coords="476,55,573,80"/>
+<area shape="poly" id="edge4_Node000003_Node000005" title=" " alt="" coords="371,101,462,79,463,85,372,107"/>
+<area shape="rect" id="Node000006" href="$ReceiverNode_8ino.html#a1933a209dc27cc038a843a10f00b66f7" title="Ring oscillator ISR — increments pulse counter on each RISING edge." alt="" coords="461,104,588,129"/>
+<area shape="poly" id="edge5_Node000003_Node000006" title=" " alt="" coords="398,114,447,114,447,119,398,119"/>
+<area shape="rect" id="Node000007" href="$TransmitterNode_8ino.html#a1933a209dc27cc038a843a10f00b66f7" title="INT0 interrupt service routine — counts ring oscillator rising edges." alt="" coords="461,153,588,179"/>
+<area shape="poly" id="edge6_Node000003_Node000007" title=" " alt="" coords="372,127,458,147,457,153,371,132"/>
+<area shape="rect" id="Node000009" href="$ReceiverNode_2csprng_8h.html#ade2c2e7611dd842d0956c92589d6cad8" title="Produce the next 64&#45;byte ChaCha20 keystream block into s_keystreamBuf." alt="" coords="445,203,604,228"/>
+<area shape="poly" id="edge8_Node000008_Node000009" title=" " alt="" coords="367,193,432,201,431,207,367,199"/>
+<area shape="poly" id="edge11_Node000011_Node000010" title=" " alt="" coords="385,284,490,278,490,283,385,290"/>
+</map>

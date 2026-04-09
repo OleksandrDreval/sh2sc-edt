@@ -1,0 +1,14 @@
+<map id="tx_setup" name="tx_setup">
+<area shape="rect" id="Node000001" title="Initialise TX hardware: UART, I2C LCD, button pin, ring&#45;oscillator entropy." alt="" coords="5,80,84,105"/>
+<area shape="rect" id="Node000002" href="$TransmitterNode_8ino.html#aa3ea3de38898a330f3254415768bd79e" title="Harvest 256 bits of hardware entropy and write them to outputSeed (TX variant)." alt="" coords="132,5,291,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="64,77,131,40,148,33,150,38,133,44,66,82"/>
+<area shape="rect" id="Node000003" href="$TransmitterNode_2csprng_8h.html#ae0da75974cdce1f5752c2bb546305bc6" title="Seed the ChaCha20 CSPRNG with 256 bits of hardware entropy." alt="" coords="163,55,260,80"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="84,84,149,74,149,79,84,89"/>
+<area shape="rect" id="Node000005" href="$TransmitterNode_8ino.html#ac1523167aa5c6b946749ddbefbe0cb32" title="I2C LCD — 16 columns x 2 rows, Aip31068&#45;compatible controller." alt="" coords="397,131,439,156"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="85,95,384,136,383,141,84,101"/>
+<area shape="rect" id="Node000006" href="$TransmitterNode_8ino.html#a28b75d7408d98c51c24e735af0e9552f" title="Refresh the TX LCD with the current ARQ status and FSM state label." alt="" coords="145,156,277,181"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="71,103,133,134,165,148,163,153,131,139,68,108"/>
+<area shape="rect" id="Node000004" href="$ReceiverNode_2csprng_8h.html#ade2c2e7611dd842d0956c92589d6cad8" title="Produce the next 64&#45;byte ChaCha20 keystream block into s_keystreamBuf." alt="" coords="339,55,497,80"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="260,65,325,65,325,70,260,70"/>
+<area shape="poly" id="edge6_Node000006_Node000005" title=" " alt="" coords="277,158,383,145,384,150,278,163"/>
+</map>

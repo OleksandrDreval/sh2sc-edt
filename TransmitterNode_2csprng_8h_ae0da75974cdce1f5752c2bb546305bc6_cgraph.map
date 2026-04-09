@@ -1,0 +1,5 @@
+<map id="initCSPRNG" name="initCSPRNG">
+<area shape="rect" id="Node000001" title="Seed the ChaCha20 CSPRNG with 256 bits of hardware entropy." alt="" coords="5,5,103,31"/>
+<area shape="rect" id="Node000002" href="$ReceiverNode_2csprng_8h.html#ade2c2e7611dd842d0956c92589d6cad8" title="Produce the next 64&#45;byte ChaCha20 keystream block into s_keystreamBuf." alt="" coords="151,5,309,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="103,15,136,15,136,21,103,21"/>
+</map>
