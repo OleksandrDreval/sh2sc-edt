@@ -1012,7 +1012,7 @@ The worst-case duration of the retry storm that exhausts `MAX_RETRIES` is bounde
 $$$
 \begin{aligned}
 T_{\text{storm}} &= MAX\_RETRIES \times ACK\_TIMEOUT\_MS \\
-&= 50 \times 50 \text{ ms} = 2500 \text{ ms}
+&= 50 \times 50\,\text{ms} = 2500\,\text{ms}
 \end{aligned}
 $$$
 
