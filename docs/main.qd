@@ -1303,7 +1303,7 @@ in approximately:
 
 $ \frac{2^{96}}{10^9} \approx 7.9 \times 10^{19}\,\text{s} $
 
-— more than $ 5 \times 10^9 $ times the age of the observable universe. This establishes forward secrecy at the session layer: current SRAM state yields no decryption capability over ciphertexts from any closed session.
+— more than $ 180 $ times the age of the observable universe. This establishes forward secrecy at the session layer: current SRAM state yields no decryption capability over ciphertexts from any closed session.
 
 ### Zeroization Trigger Points
 
