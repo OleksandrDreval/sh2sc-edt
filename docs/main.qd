@@ -28,6 +28,8 @@
     .quarkdown.quarkdown-paged p {
       text-align: justify !important;
       margin-top: 0 !important;
+      orphans: 3;
+      widows: 3;
     }
 
     /* First paragraph directly after any heading: no indent */
@@ -222,15 +224,6 @@
     .quarkdown.quarkdown-paged h6 {
       break-after: avoid !important;
       page-break-after: avoid !important;
-    }
-
-    /* Orphans & widows for body paragraphs
-       Require at least 3 lines to remain on each side of a column/page
-       break within a paragraph. This prevents the situation where only
-       one or two lines follow a heading at the bottom of a page. */
-    .quarkdown.quarkdown-paged p {
-      orphans: 3;
-      widows: 3;
     }
 
     /* REFINED GLOBAL TEXT RETENTION SAFEGUARD
