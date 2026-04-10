@@ -1,6 +1,9 @@
+.docname {SH2SC-EDT and C2P-ARQ: A Self-Healing Hardware and Software Complex Utilizing the ChaCha20-Poly1305 Automatic Repeat reQuest Protocol}
+.docauthors
+    - Oleksandr Dreval
+        - email: drevaloleksandr@gmail.com
 .doctype {paged}
 .theme {paperwhite}
-.docname {SH2SC-EDT and C2P-ARQ: A Self-Healing Hardware and Software Complex Utilizing the ChaCha20-Poly1305 Automatic Repeat reQuest Protocol}
 .numbering
     - headings: 1.1.1
     - figures: 1.1
