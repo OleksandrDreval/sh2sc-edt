@@ -1,8 +1,20 @@
 .docname {SH2SC-EDT and C2P-ARQ: A Self-Healing Hardware and Software Complex Utilizing the ChaCha20-Poly1305 Automatic Repeat reQuest Protocol}
+.docdescription {A paper about SH2SC-EDT and the C2P-ARQ protocol for fault-tolerant encrypted data transmission on ATmega328P hardware.}
 .docauthors
     - Oleksandr Dreval
         - email: drevaloleksandr@gmail.com
+.dockeywords
+  - SH2SC-EDT
+  - C2P-ARQ
+  - ChaCha20-Poly1305
+  - authenticated encryption
+  - automatic repeat request
+  - ATmega328P
+  - SimulIDE
+  - fault tolerance
 .doctype {paged}
+.doclang {en}
+
 .theme {paperwhite}
 .numbering
     - headings: 1.1.1
