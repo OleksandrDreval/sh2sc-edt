@@ -9,6 +9,8 @@
     - code: 1
     - footnotes: 1
 
+.paragraphstyle indent:{1.5} spacing:{0.2}
+
 .html
     <style>
     .quarkdown.quarkdown-paged .mermaid > svg {
@@ -25,9 +27,7 @@
     /* IACR / Springer LNCS paragraph formatting */
     .quarkdown.quarkdown-paged p {
       text-align: justify !important;
-      text-indent: 1.5em !important;
       margin-top: 0 !important;
-      margin-bottom: 0.2em !important;
     }
 
     /* First paragraph directly after any heading: no indent */
