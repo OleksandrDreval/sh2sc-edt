@@ -9,7 +9,7 @@
     - code: 1
     - footnotes: 1
 
-.paragraphstyle lineheight:{1.0} letterspacing:{0} spacing:{0} indent:{1.5}
+.paragraphstyle letterspacing:{0} spacing:{0} indent:{1.5}
 
 .html
     <style>
