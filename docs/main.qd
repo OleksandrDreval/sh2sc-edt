@@ -3,6 +3,11 @@
 .docname {SH2SC-EDT and C2P-ARQ: A Self-Healing Hardware and Software Complex Utilizing the ChaCha20-Poly1305 Automatic Repeat reQuest Protocol}
 .numbering
     - headings: 1.1.1
+    - figures: 1.1
+    - tables: 1.1
+    - equations: (1)
+    - code: 1
+    - footnotes: 1
 
 .html
     <style>
