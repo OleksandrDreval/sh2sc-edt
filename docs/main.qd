@@ -6,6 +6,13 @@
 
 .html
     <style>
+    .quarkdown.quarkdown-paged .mermaid > svg {
+      max-height: 460px !important;
+    }
+    .quarkdown.quarkdown-paged .mermaid {
+      max-height: 460px;
+      overflow: hidden;
+    }
     h1, h2, h3, h4, h5, h6 {
       text-align: center;
     }
@@ -49,6 +56,14 @@
     .quarkdown.quarkdown-paged formula[data-block] + p,
     .quarkdown.quarkdown-paged .after-display-math {
       text-indent: 0 !important;
+    }
+
+    /* Prevent text-indent and text-align:justify from leaking into Mermaid diagram
+       internal labels. Mermaid may render node text via <p> inside <foreignObject>. */
+    .quarkdown.quarkdown-paged .mermaid p {
+      text-indent: 0 !important;
+      text-align: center !important;
+      margin: 0 !important;
     }
 
     /* Display math blocks must not receive text-align:justify — they are
@@ -235,6 +250,19 @@
       page-break-inside: auto;
     }
 
+    /* VISUAL BLOCK CONTAINMENT
+       Re-enforce strict boundaries so diagrams don't eat text */
+    .quarkdown.quarkdown-paged .mermaid {
+      max-height: 460px !important;
+      overflow: hidden !important;
+      break-inside: avoid !important;
+      page-break-inside: avoid !important;
+    }
+
+    .quarkdown.quarkdown-paged .mermaid > svg {
+      max-height: 460px !important;
+    }
+
     /* Safest academic approach: prevent code blocks from splitting across pages */
     .quarkdown.quarkdown-paged pre {
       break-inside: avoid !important;
@@ -248,7 +276,10 @@
       margin-bottom: 0 !important;
     }
 
-    /* Keep display-math blocks intact across pages when avoidable. */
+    /* Keep figures and math blocks intact across pages
+       Mermaid diagrams and display-math formula elements should not be
+       split across a page boundary when avoidable. */
+    .quarkdown.quarkdown-paged .mermaid,
     .quarkdown.quarkdown-paged formula[data-block] {
       break-inside: avoid !important;
       page-break-inside: avoid !important;
@@ -258,300 +289,14 @@
 
 .html
     <script>
-    /* SH2SC-EDT / C2P-ARQ: normalize Mermaid DOM before Pagedjs chunking.
-       Convert live Mermaid <svg> trees into static <img> data URIs so the
-       pagination engine sees a simple replaced element with stable metrics. */
     /* SH2SC-EDT — pre-Pagedjs marking: find every <p> that immediately follows a
        <formula data-block=""> in the source DOM and add class "after-display-math".
        This must run in Paged.Handler.afterParsed(), which fires BEFORE Pagedjs splits
        content into pages — ensuring the class survives pagination regardless of whether
        a page break falls between the formula and the paragraph. */
     (function() {
-      function ensureSvgNamespaces(serializedSvg) {
-        var output = serializedSvg;
-        if (!output.includes('xmlns="http://www.w3.org/2000/svg"')) {
-          output = output.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
-        }
-        if (!output.includes('xmlns:xlink="http://www.w3.org/1999/xlink"')) {
-          output = output.replace('<svg', '<svg xmlns:xlink="http://www.w3.org/1999/xlink"');
-        }
-        return output;
-      }
-
-      function getSvgRasterSize(svgElement) {
-        var rect = svgElement.getBoundingClientRect();
-        var width = Math.max(1, Math.ceil(rect.width || 0));
-        var height = Math.max(1, Math.ceil(rect.height || 0));
-
-        if (width > 1 && height > 1) {
-          return { width: width, height: height };
-        }
-
-        var viewBox = svgElement.viewBox && svgElement.viewBox.baseVal
-          ? svgElement.viewBox.baseVal
-          : null;
-        if (viewBox && viewBox.width > 0 && viewBox.height > 0) {
-          return {
-            width: Math.max(1, Math.ceil(viewBox.width)),
-            height: Math.max(1, Math.ceil(viewBox.height))
-          };
-        }
-
-        return { width: 300, height: 150 };
-      }
-
-      function waitForImageLoad(image) {
-        return new Promise(function(resolve, reject) {
-          image.onload = function() { resolve(); };
-          image.onerror = function() { reject(new Error('Failed to decode Mermaid SVG blob')); };
-        });
-      }
-
-      function buildInlineStyleFromComputed(computedStyle) {
-        var properties = [
-          'display', 'visibility', 'opacity',
-          'fill', 'fill-opacity', 'stroke', 'stroke-opacity', 'stroke-width',
-          'stroke-dasharray', 'stroke-linecap', 'stroke-linejoin', 'vector-effect',
-          'color', 'background-color',
-          'font-family', 'font-size', 'font-weight', 'font-style',
-          'line-height', 'letter-spacing', 'text-anchor', 'dominant-baseline',
-          'text-align', 'text-indent', 'white-space',
-          'filter', 'transform', 'paint-order'
-        ];
-
-        var chunks = [];
-        for (var index = 0; index < properties.length; index++) {
-          var propertyName = properties[index];
-          var value = computedStyle.getPropertyValue(propertyName);
-          if (!value) {
-            continue;
-          }
-
-          // Keep snapshot self-contained for reliable PNG conversion.
-          if (/url\((['"]?)https?:\/\//i.test(value)) {
-            continue;
-          }
-
-          chunks.push(propertyName + ':' + value + ';');
-        }
-
-        return chunks.join('');
-      }
-
-      function inlineComputedStylesRecursive(sourceNode, targetNode) {
-        if (!sourceNode || !targetNode || sourceNode.nodeType !== 1 || targetNode.nodeType !== 1) {
-          return;
-        }
-
-        var computedStyle = getComputedStyle(sourceNode);
-        var inlineStyle = buildInlineStyleFromComputed(computedStyle);
-        if (inlineStyle) {
-          targetNode.setAttribute('style', inlineStyle);
-        }
-
-        var sourceChildren = sourceNode.children;
-        var targetChildren = targetNode.children;
-        var childrenCount = Math.min(sourceChildren.length, targetChildren.length);
-        for (var childIndex = 0; childIndex < childrenCount; childIndex++) {
-          inlineComputedStylesRecursive(sourceChildren[childIndex], targetChildren[childIndex]);
-        }
-      }
-
-      function createRenderedSvgSnapshot(svgElement) {
-        var snapshot = svgElement.cloneNode(true);
-        inlineComputedStylesRecursive(svgElement, snapshot);
-
-        var rasterSize = getSvgRasterSize(svgElement);
-        snapshot.setAttribute('width', String(rasterSize.width));
-        snapshot.setAttribute('height', String(rasterSize.height));
-
-        return snapshot;
-      }
-
-      function replaceForeignObjectsForRasterization(snapshotSvg, sourceSvg) {
-        var svgNamespace = 'http://www.w3.org/2000/svg';
-        var snapshotForeignObjects = snapshotSvg.querySelectorAll('foreignObject');
-        var sourceForeignObjects = sourceSvg.querySelectorAll('foreignObject');
-        var total = Math.min(snapshotForeignObjects.length, sourceForeignObjects.length);
-
-        for (var index = 0; index < total; index++) {
-          var sourceForeignObject = sourceForeignObjects[index];
-          var snapshotForeignObject = snapshotForeignObjects[index];
-
-          var sourceTextNode = sourceForeignObject.querySelector('p, span, div') || sourceForeignObject;
-          var computedStyle = getComputedStyle(sourceTextNode);
-          var lines = (sourceTextNode.innerText || sourceTextNode.textContent || '')
-            .split(/\r?\n/)
-            .map(function(line) { return line.trim(); })
-            .filter(function(line) { return line.length > 0; });
-
-          if (lines.length === 0) {
-            snapshotForeignObject.remove();
-            continue;
-          }
-
-          var x = parseFloat(snapshotForeignObject.getAttribute('x') || '0');
-          var y = parseFloat(snapshotForeignObject.getAttribute('y') || '0');
-          var width = parseFloat(snapshotForeignObject.getAttribute('width') || '0');
-          var height = parseFloat(snapshotForeignObject.getAttribute('height') || '0');
-
-          var centerX = x + (width / 2);
-          var centerY = y + (height / 2);
-          var textElement = document.createElementNS(svgNamespace, 'text');
-          textElement.setAttribute('x', String(centerX));
-          textElement.setAttribute('y', String(centerY));
-          textElement.setAttribute('text-anchor', 'middle');
-          textElement.setAttribute('dominant-baseline', 'middle');
-          textElement.setAttribute('fill', computedStyle.color || '#111111');
-          textElement.setAttribute('font-family', computedStyle.fontFamily || 'sans-serif');
-          textElement.setAttribute('font-size', computedStyle.fontSize || '16px');
-          textElement.setAttribute('font-style', computedStyle.fontStyle || 'normal');
-          textElement.setAttribute('font-weight', computedStyle.fontWeight || '400');
-          textElement.setAttribute('letter-spacing', computedStyle.letterSpacing || 'normal');
-
-          if (lines.length === 1) {
-            textElement.textContent = lines[0];
-          } else {
-            var lineHeightPx = parseFloat(computedStyle.lineHeight);
-            var fontSizePx = parseFloat(computedStyle.fontSize) || 16;
-            if (!isFinite(lineHeightPx) || lineHeightPx <= 0) {
-              lineHeightPx = fontSizePx * 1.2;
-            }
-
-            var totalHeight = lineHeightPx * (lines.length - 1);
-            var firstDy = -totalHeight / 2;
-
-            for (var lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-              var tspan = document.createElementNS(svgNamespace, 'tspan');
-              tspan.setAttribute('x', String(centerX));
-              tspan.setAttribute('dy', lineIndex === 0 ? String(firstDy) : String(lineHeightPx));
-              tspan.textContent = lines[lineIndex];
-              textElement.appendChild(tspan);
-            }
-          }
-
-          var parentNode = snapshotForeignObject.parentNode;
-          if (parentNode) {
-            parentNode.insertBefore(textElement, snapshotForeignObject);
-          }
-          snapshotForeignObject.remove();
-        }
-      }
-
-      async function rasterizeSvgSnapshotToPngDataUri(sourceSvgElement, snapshotSvg) {
-        var serialized = ensureSvgNamespaces(
-          new XMLSerializer().serializeToString(snapshotSvg)
-        );
-        var rasterSize = getSvgRasterSize(sourceSvgElement);
-        var blob = new Blob([serialized], { type: 'image/svg+xml;charset=utf-8' });
-        var blobUrl = URL.createObjectURL(blob);
-
-        try {
-          var image = new Image();
-          image.decoding = 'sync';
-          image.src = blobUrl;
-          await waitForImageLoad(image);
-
-          var devicePixelRatioValue = window.devicePixelRatio || 1;
-          var pixelRatio = Math.min(4, Math.max(2, devicePixelRatioValue));
-
-          var canvas = document.createElement('canvas');
-          canvas.width = Math.max(1, Math.ceil(rasterSize.width * pixelRatio));
-          canvas.height = Math.max(1, Math.ceil(rasterSize.height * pixelRatio));
-
-          var context = canvas.getContext('2d');
-          if (!context) {
-            throw new Error('Cannot get 2D canvas context');
-          }
-
-          context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-          context.drawImage(image, 0, 0, rasterSize.width, rasterSize.height);
-
-          return canvas.toDataURL('image/png');
-        } finally {
-          URL.revokeObjectURL(blobUrl);
-        }
-      }
-
-      async function svgElementToPngDataUri(svgElement) {
-        // SH2SC-EDT/C2P-ARQ: native render first; if canvas blocks foreignObject,
-        // retry with sanitized SVG, but still output PNG.
-        var nativeSnapshot = createRenderedSvgSnapshot(svgElement);
-
-        try {
-          return await rasterizeSvgSnapshotToPngDataUri(svgElement, nativeSnapshot);
-        } catch (nativeRasterError) {
-          var sanitizedSnapshot = createRenderedSvgSnapshot(svgElement);
-          replaceForeignObjectsForRasterization(sanitizedSnapshot, svgElement);
-          return await rasterizeSvgSnapshotToPngDataUri(svgElement, sanitizedSnapshot);
-        }
-      }
-
-      function getMermaidAltText(mermaidContainer, svgElement) {
-        var ariaLabel = svgElement.getAttribute('aria-label');
-        if (ariaLabel && ariaLabel.trim()) {
-          return ariaLabel.trim();
-        }
-        var caption = mermaidContainer.closest('figure');
-        if (caption) {
-          var figcaption = caption.querySelector('figcaption');
-          if (figcaption && figcaption.textContent.trim()) {
-            return figcaption.textContent.trim();
-          }
-        }
-        return 'Mermaid diagram';
-      }
-
-      function replaceMermaidContainerWithRegularImage(mermaidContainer, image) {
-        var parentNode = mermaidContainer.parentNode;
-        if (!parentNode) {
-          return;
-        }
-
-        if (parentNode.tagName === 'FIGURE') {
-          parentNode.replaceChild(image, mermaidContainer);
-          return;
-        }
-
-        var figure = document.createElement('figure');
-        figure.appendChild(image);
-        parentNode.replaceChild(figure, mermaidContainer);
-      }
-
       function tryRegister() {
         if (typeof Paged === 'undefined') { setTimeout(tryRegister, 50); return; }
-
-        class MermaidSvgToImageNormalizer extends Paged.Handler {
-          async afterParsed(parsed) {
-            var mermaidContainers = parsed.querySelectorAll('.mermaid');
-            for (var index = 0; index < mermaidContainers.length; index++) {
-              var mermaidContainer = mermaidContainers[index];
-              var svgElement = mermaidContainer.querySelector('svg');
-              if (!svgElement) {
-                continue;
-              }
-
-              var dataUri;
-              try {
-                dataUri = await svgElementToPngDataUri(svgElement);
-              } catch (pngError) {
-                continue;
-              }
-
-              var image = document.createElement('img');
-              image.src = dataUri;
-              image.alt = getMermaidAltText(mermaidContainer, svgElement);
-              image.decoding = 'sync';
-              image.loading = 'eager';
-
-              // Replace Mermaid container with regular figure/img so Quarkdown
-              // applies the same automatic formatting as for normal images.
-              replaceMermaidContainerWithRegularImage(mermaidContainer, image);
-            }
-          }
-        }
-        Paged.registerHandlers(MermaidSvgToImageNormalizer);
-
         class AfterDisplayMathMarker extends Paged.Handler {
           afterParsed(parsed) {
             var formulas = parsed.querySelectorAll('formula[data-block]');
