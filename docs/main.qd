@@ -25,6 +25,9 @@
     - footnotes: 1
 
 .paragraphstyle letterspacing:{0} spacing:{0} indent:{1.5}
+
+.pageformat size:{A4}
+.pageformat margin:{4cm}
 .pageformat bordertop:{0.5pt} borderbottom:{0.5pt} bordercolor:{#333333}
 
 .html
