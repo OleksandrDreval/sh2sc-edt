@@ -200,12 +200,9 @@
       padding-bottom: 14pt !important;
     }
 
-    /* Title page (page 1): TitlePageNoHeaders JS sets visibility:hidden on every
+     /* Title page (page 1): TitlePageNoHeaders JS sets visibility:hidden on every
        .pagedjs_margin-content node, hiding the running text while preserving the
-       border-bottom / border-top rules on .pagedjs_margin-top / .pagedjs_margin-bottom.
-       No <hr> tags are embedded in the page content; separator lines come exclusively
-       from these CSS borders — guaranteeing exact geometric alignment with the lines
-       on pages 2+. */
+       native page borders and the surrounding page geometry. */
 
     /* .page-start forces a hard page break via the Pagedjs CSSOM scanner.
        Applied in afterParsed (JS) to the Abstract <p>, and also placed as an
