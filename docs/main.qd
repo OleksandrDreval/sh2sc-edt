@@ -25,6 +25,7 @@
     - footnotes: 1
 
 .paragraphstyle letterspacing:{0} spacing:{0} indent:{1.5}
+.pageformat bordertop:{0.5pt} borderbottom:{0.5pt} bordercolor:{#333333}
 
 .html
     <style>
@@ -189,15 +190,6 @@
       display: flex;
       align-items: flex-start;
       padding: 0;
-    }
-
-    /* Separator rules: bottom of header band / top of footer band */
-    .pagedjs_page .pagedjs_margin-top {
-      border-bottom: 0.5pt solid #333;
-    }
-
-    .pagedjs_page .pagedjs_margin-bottom {
-      border-top: 0.5pt solid #333;
     }
 
     /* Space between separator lines and the running text.
