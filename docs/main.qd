@@ -109,7 +109,7 @@
     }
 
     /* Image/diagram captions in .container — no indentation, centered */
-    .quarkdown.quarkdown-paged .container p {
+    .quarkdown.quarkdown-paged .container p:has(> em) {
       text-indent: 0 !important;
       text-align: center !important;
     }
