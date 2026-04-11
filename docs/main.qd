@@ -358,49 +358,9 @@
 .pagemargin {bottomoutside}
     .currentpage
 
-.html
-    <div style="height: 6em;"></div>
+.include {title_page.qd}
 
-    <h1 style="text-align: center; border: none; padding: 0; margin: 0 0 1.6em 0; font-size: 2em; font-weight: normal; line-height: 1.4;"><strong>SH2SC-EDT and C2P-ARQ:</strong><br>A Self-Healing Hardware and Software Complex Utilizing the ChaCha20-Poly1305 Automatic Repeat reQuest Protocol</h1>
-
-    <div style="text-align: center; margin: 0 0 3em 0; font-size: 1.2em; line-height: 1.6;"><strong>Oleksandr Dreval</strong></div>
-
-    <div style="height: 8em;"></div>
-
-    <table style="width: 100%; border-collapse: collapse; border: none; font-size: 10pt; margin-bottom: 0.5em;">
-      <tr>
-        <td style="border: none; padding: 4px 0; text-align: left;">Project's GitHub Repository</td>
-        <td style="border: none; padding: 4px 0; text-align: right;"><a href="https://github.com/OleksandrDreval/sh2sc-edt">github.com/OleksandrDreval/sh2sc-edt</a></td>
-      </tr>
-      <tr>
-        <td style="border: none; padding: 4px 0; text-align: left;">Project Documentation Site</td>
-        <td style="border: none; padding: 4px 0; text-align: right;"><a href="https://oleksandrdreval.github.io/sh2sc-edt">oleksandrdreval.github.io/sh2sc-edt</a></td>
-      </tr>
-    </table>
-    <table style="width: 100%; border-collapse: collapse; border: none; font-size: 10pt; margin-bottom: 0;">
-      <tr>
-        <td style="border: none; padding: 4px 0; text-align: left;">E-mail</td>
-        <td style="border: none; padding: 4px 0; text-align: right;"><a href="mailto:drevaloleksandr@gmail.com">drevaloleksandr@gmail.com</a></td>
-      </tr>
-      <tr>
-        <td style="border: none; padding: 4px 0; text-align: left;">GitHub Profile</td>
-        <td style="border: none; padding: 4px 0; text-align: right;"><a href="https://github.com/OleksandrDreval">github.com/OleksandrDreval</a></td>
-      </tr>
-      <tr>
-        <td style="border: none; padding: 4px 0; text-align: left;">LinkedIn</td>
-        <td style="border: none; padding: 4px 0; text-align: right;"><a href="https://www.linkedin.com/in/oleksandr-dreval">linkedin.com/in/oleksandr-dreval</a></td>
-      </tr>
-    </table>
-
-    <div style="height: 8em;"></div>
-
-    <div style="text-align: center; font-style: italic; font-size: 1.1em; margin: 0 0 2em 0;">March 2026</div>
-
-    <div style="height: 2em;"></div>
-
-    <div style="break-before: page; page-break-before: always;"></div>
-
-    <h2 style="text-align: center; border: none; font-size: 1.5em; font-weight: bold; margin-bottom: 1em; margin-top: 0;">Abstract</h2>
+<h2 style="text-align: center; border: none; font-size: 1.5em; font-weight: bold; margin-bottom: 1em; margin-top: 0;">Abstract</h2>
 
 Commercial off-the-shelf (COTS) IoT communication modules operating over unshielded physical channels are vulnerable to active jamming and provide no integrated authenticated encryption at the transport layer, leaving session state irrecoverably lost upon link disruption. This paper introduces SH2SC-EDT (Self-Healing Hardware and Software Complex for Encrypted Data Transmission) and its transport engine, the C2P-ARQ (ChaCha-Poly Automatic Repeat reQuest) protocol. The architecture is founded on strictly deterministic, non-blocking finite state machines and employs ChaCha20-Poly1305 AEAD for per-packet authenticated encryption, with session nonces derived from a hardware TRNG seeded by multiple physical entropy sources. Protocol correctness is stressed via a stateful, time-dependent data stream whose variable inter-packet timing simultaneously exercises the Smart Dynamic Watchdog adaptive timeout and the Auto-Resume mechanism — properties that a static or homogeneous payload cannot validate. Hardware simulation on ATmega328P (16 MHz, 2 KB SRAM) in SimulIDE demonstrates that C2P-ARQ recovers desynchronised sessions after sustained jamming of arbitrary duration without data loss and without operator intervention, confirming the self-healing property at the application layer.
 
