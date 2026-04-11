@@ -15,7 +15,7 @@
 .doctype {paged}
 .doclang {en}
 
-.theme {paperwhite}
+.theme {paperwhite} layout:{latex}
 .numbering
     - headings: 1.1.1
     - figures: 1.1
