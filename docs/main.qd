@@ -209,16 +209,6 @@
        .pagedjs_margin-content node, hiding the running text while preserving the
        native page borders and the surrounding page geometry. */
 
-    /* .page-start forces a hard page break via the Pagedjs CSSOM scanner.
-       Applied in afterParsed (JS) to the Abstract <p>, and also placed as an
-       explicit <div class="page-start"> in the source directly before Abstract.
-       Using a stylesheet class (not an inline style attribute) ensures Pagedjs
-       detects the break declaration during its pre-chunking CSSOM scan. */
-    .page-start {
-      break-before: page !important;
-      page-break-before: always !important;
-    }
-
     /* Page-break avoidance: prevent hanging headings
        Forbid a page break immediately AFTER any heading level so that
        Pagedjs pushes the heading to the next page when its first body
@@ -314,16 +304,6 @@
               }
             });
 
-            /* Belt-and-suspenders page break: CSS class .page-start is defined in
-               the <style> block with break-before:page. Adding it via classList
-               (not inline style) ensures Pagedjs detects it through the CSSOM
-               when it scans for break declarations before chunking pages. */
-            parsed.querySelectorAll('p').forEach(function(p) {
-              if (p.querySelector('strong') &&
-                  p.querySelector('strong').textContent.trim() === 'Abstract') {
-                p.classList.add('page-start');
-              }
-            });
           }
         }
         Paged.registerHandlers(AfterDisplayMathMarker);
