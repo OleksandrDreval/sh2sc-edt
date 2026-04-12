@@ -38,4 +38,4 @@
 
     <div style="height: 2em;"></div>
 
-    <div style="break-before: page; page-break-before: always;"></div>
+  .pagebreak
