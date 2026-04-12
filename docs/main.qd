@@ -331,8 +331,7 @@
 
 .include {title_page.qd}
 
-.abstractalignment {center}
-
+.abstractalignment {start}
 .abstract
   Commercial off-the-shelf (COTS) IoT communication modules operating over unshielded physical channels are vulnerable to active jamming and provide no integrated authenticated encryption at the transport layer, leaving session state irrecoverably lost upon link disruption. This paper introduces SH2SC-EDT (Self-Healing Hardware and Software Complex for Encrypted Data Transmission) and its transport engine, the C2P-ARQ (ChaCha-Poly Automatic Repeat reQuest) protocol. The architecture is founded on strictly deterministic, non-blocking finite state machines and employs ChaCha20-Poly1305 AEAD for per-packet authenticated encryption, with session nonces derived from a hardware TRNG seeded by multiple physical entropy sources. Protocol correctness is stressed via a stateful, time-dependent data stream whose variable inter-packet timing simultaneously exercises the Smart Dynamic Watchdog adaptive timeout and the Auto-Resume mechanism — properties that a static or homogeneous payload cannot validate. Hardware simulation on ATmega328P (16 MHz, 2 KB SRAM) in SimulIDE demonstrates that C2P-ARQ recovers desynchronised sessions after sustained jamming of arbitrary duration without data loss and without operator intervention, confirming the self-healing property at the application layer.
 
