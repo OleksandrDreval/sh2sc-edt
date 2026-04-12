@@ -30,6 +30,7 @@
 
 .pageformat size:{A4}
 .pageformat margin:{4cm}
+.pageformat alignment:{justify}
 .pageformat bordertop:{0.5pt} borderbottom:{0.5pt} bordercolor:{#333333}
 
 .html
@@ -47,7 +48,6 @@
 
     /* IACR / Springer LNCS paragraph formatting */
     .quarkdown.quarkdown-paged p {
-      text-align: justify !important;
       margin-top: 0 !important;
       orphans: 3;
       widows: 3;
