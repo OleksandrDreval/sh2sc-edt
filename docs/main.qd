@@ -104,14 +104,7 @@
       text-align: center !important;
     }
 
-    /* Image/diagram captions in .container — no indentation, centered */
-    .quarkdown.quarkdown-paged .container p:has(> em) {
-      text-indent: 0 !important;
-      text-align: center !important;
-    }
-
-    /* Paragraph after a caption (.container) is a new logical paragraph;
-       it receives the standard first-line indent — no override needed here. */
+    /* Figure and diagram captions are centered locally via .center blocks. */
 
     /* Continuation of paragraph on next page (Pagedjs data-split-from): no indentation.
        Specificity (0,3,1) intentionally exceeds .quarkdown.quarkdown-paged p (0,2,1)
