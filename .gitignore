@@ -611,3 +611,18 @@ bin/*
 # Generated documentation
 docs/html/
 docs/latex/
+docs_output/html/*
+docs/output/*
+docs_output/*
+docs/mermaid_*
+
+# Generated artifacts
+/output/
+/docs/output-html/
+/docs/fonts/
+/debug img/
+/*.package
+/*.vcd
+
+/full_*.cpp
+/short_*.cpp
