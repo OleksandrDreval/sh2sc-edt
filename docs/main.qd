@@ -404,7 +404,9 @@ The proof-of-concept instantiation of C2P-ARQ transmits a monophonic musical sco
 
 Note durations in a real musical score span at least two orders of magnitude — from sixteenth notes (≈ 100 ms) to held notes exceeding 1000 ms. This heterogeneity is the only mechanism by which the Smart Dynamic Watchdog can be exercised under realistic conditions. The watchdog sets its session-release timeout $ T_{RX} $ dynamically after each authenticated packet according to the following formula:
 
-$ T_{RX} = d_{k} + T_{\text{grace}} $
+$$$
+T_{RX} = d_{k} + T_{\text{grace}}
+$$$
 
 where $ T_{RX} $ is the session-release timeout computed for each packet, $ d_{k} $ is the duration of the $ k $-th note in milliseconds, and $ T_{\text{grace}} $ is a fixed network grace period absorbing the worst-case retry storm. A payload of uniform duration would reduce this adaptive mechanism to a static timer, leaving its core adaptation logic entirely untested.
 
@@ -499,21 +501,31 @@ Node B is the execution endpoint and produces no protocol control signals beyond
 
 The cryptographic security of C2P-ARQ rests on a single, non-negotiable requirement: every session nonce must be drawn from a source of genuine physical randomness. This requirement is not a matter of implementation preference but a formal security constraint imposed by the AEAD construction itself. ChaCha20-Poly1305 is an IND-CPA-secure cipher under the assumption that no nonce is ever reused under the same key. Formally, for a 96-bit nonce space and a 256-bit key $ K $, any two encryptions become insecure if the nonce is reused:
 
-$ E_{K,IV_1}(m_1),\; E_{K,IV_2}(m_2) $
+$$$
+E_{K,IV_1}(m_1),\; E_{K,IV_2}(m_2)
+$$$
 
-$ IV_1 = IV_2 $
+$$$
+IV_1 = IV_2
+$$$
 
 In that case the XOR of the plaintexts becomes observable:
 
-$ m_1 \oplus m_2 $
+$$$
+m_1 \oplus m_2
+$$$
 
 because ChaCha20's keystream is deterministic:
 
-$ E_{K,N}(m) = m \oplus \text{ChaCha20}(K, N) $
+$$$
+E_{K,N}(m) = m \oplus \text{ChaCha20}(K, N)
+$$$
 
 where the symbol
 
-$ E_{K,N}(m) $
+$$$
+E_{K,N}(m)
+$$$
 
 denotes the encryption of message $ m $ under key $ K $ and nonce $ N $, and $ \text{ChaCha20}(K, N) $ is the corresponding purely deterministic keystream block. A single nonce collision therefore catastrophically breaks both confidentiality and Poly1305 integrity — the MAC key, derived from the first block of the ChaCha20 keystream, is identical for both messages, enabling an attacker to forge arbitrary authenticated ciphertexts. This is not a theoretical edge case; any deterministic pseudo-random number generator (PRNG) with a predictable or reproducible state — including the Arduino `random()` function seeded from a fixed constant — makes nonce collisions across power cycles a certainty.
 
@@ -523,7 +535,9 @@ Software PRNGs are structurally insufficient as a standalone entropy source for 
 
 Physical randomness in SH2SC-EDT is harvested by `generateEntropyPool()`, a one-shot function invoked once during node initialisation (`setup()` on TX, `rx_setup()` on RX) that fills a 32-byte seed buffer by executing eight sequential word iterations. In each iteration, multiple physically independent sources are folded into a 32-bit accumulator via a rotate-XOR sponge; the resulting word is written as four little-endian bytes into the output buffer. The total blocking cost is therefore:
 
-$ 8 \times 2\,\text{ms} = 16\,\text{ms} $
+$$$
+8 \times 2\,\text{ms} = 16\,\text{ms}
+$$$
 
 This is an acceptable one-time expenditure in the initialisation context, which carries no UART receive obligations. The transmitter node feeds seven sources into each word; the receiver node feeds six, the `micros()` human-timing term being absent because the receiver carries no button input. The hardware sub-circuit implementing Sources 1 and 5 is shown in .ref {hardware-entropy-sub-circuit-in-simulide}.
 
@@ -531,19 +545,27 @@ This is an acceptable one-time expenditure in the initialisation context, which 
 
 **Source 1 — ring-oscillator gate (INT0, pin 2, RISING).** At the start of each word iteration, `s_ringOscPulses` is zeroed and the ISR `onRingOscPulse()` is attached to INT0 on the RISING edge. The MCU then blocks for 2 ms via `delay(2)`, during which the hardware ring oscillator drives INT0; the ISR increments the pulse counter on every rising edge. At gate closure the interrupt is detached and the counter is folded into the pool. The instantaneous period of the $ k $-th ring-oscillator cycle is expressed as:
 
-$ T_k = T_0 + \Delta t_k $
+$$$
+T_k = T_0 + \Delta t_k
+$$$
 
 where $ T_0 $ is the nominal, device-specific oscillation period and $ \Delta t_k $ is accumulated gate-stage phase jitter, distributed as a zero-mean Gaussian with variance $ \sigma_j^2 $:
 
-$ \Delta t_k \sim \mathcal{N}(0, \sigma_j^2) $
+$$$
+\Delta t_k \sim \mathcal{N}(0, \sigma_j^2)
+$$$
 
 Because $ \Delta t_k $ is physical, the edge count per 2 ms window varies unpredictably across iterations. The Shannon entropy of the sampled count $ C $ satisfies:
 
-$ H(C) = -\sum_{c} P(C = c)\,\log_2 P(C = c) $
+$$$
+H(C) = -\sum_{c} P(C = c)\,\log_2 P(C = c)
+$$$
 
 Under nominal jitter conditions, empirical counts span 8–16 distinct values, yielding an estimated Shannon entropy per gate window in the range:
 
-$ H(C) \approx 3\text{–}4 $
+$$$
+H(C) \approx 3\text{–}4
+$$$
 
 bits per gate window. In the SimulIDE simulation context the Noise Wave Generator sub-circuit injects frequency-modulated perturbations on pin 2 to compensate for the deterministic propagation delays of ideal gate models that would otherwise suppress physical jitter.
 
@@ -551,7 +573,9 @@ bits per gate window. In the SimulIDE simulation context the Noise Wave Generato
 
 **Source 3 — on-die temperature sensor ADC.** The ATmega328P integrates a temperature-sensing diode accessible via ADC channel 8. Setting `ADMUX = 0xC8` (`_BV(REFS1) | _BV(REFS0) | _BV(MUX3)`) selects the internal 1.1 V bandgap reference and multiplexes the temperature diode output onto the ADC input. One conversion is discarded immediately after the reference switch to allow the sample-and-hold capacitor to settle. Eight successive conversions are then performed; the LSB of each `ADCL` reading is extracted and shifted into an 8-bit accumulator, which is folded into the pool. The temperature sensor readout is subject to quantisation noise and thermal fluctuations that are not synchronised to the CPU clock; the LSBs are non-deterministic under normal operating conditions, contributing approximately:
 
-$ H_{\text{LSB}} \lesssim 1\,\text{bit per sample} $
+$$$
+H_{\text{LSB}} \lesssim 1\,\text{bit per sample}
+$$$
 
 This corresponds to up to 8 bits per word in aggregate.
 
@@ -565,15 +589,21 @@ This corresponds to up to 8 bits per word in aggregate.
 
 The 32-byte seed produced by `generateEntropyPool()` is passed immediately to `initCSPRNG()` and scrubbed from the stack with `memset()` to prevent residual key material exposure. The raw entropy budget is dominated by the ring-oscillator contribution. Under nominal jitter conditions, the per-window entropy is on the order of:
 
-$ H(C) \approx 3\text{–}4 $
+$$$
+H(C) \approx 3\text{–}4
+$$$
 
 bits per 2 ms gate window. Across 8 independent iterations, this yields:
 
-$ H_{\text{ring}} \approx 24\text{–}32 $
+$$$
+H_{\text{ring}} \approx 24\text{–}32
+$$$
 
 bits. Uninitialised SRAM power-on bias, temperature ADC LSBs, TCNT1 phase capture, the A0 noise generator readout, and — on the transmitter — `micros()` human-timing jitter contribute additional structurally orthogonal entropy that is difficult to quantify precisely in isolation. Under the conservative assumption that only the ring-oscillator source contributes measurably, the total raw entropy budget is estimated at:
 
-$ H_{\text{raw}} \approx 24\text{–}32 $
+$$$
+H_{\text{raw}} \approx 24\text{–}32
+$$$
 
 bits across the 32-byte seed.
 
@@ -585,15 +615,21 @@ The raw bit contributions harvested from the seven physical sources described in
 
 The first stage condenses the per-source bit contributions into a compact 32-byte raw seed using a rotate-XOR sponge applied to each of the eight 32-bit accumulator words. After each source contribution, the accumulator is updated by the following primitive:
 
-$ \text{pool}' = \bigl(\text{pool} \lll 1\bigr) \oplus \text{bits} $
+$$$
+\mathrm{pool}' = \bigl(\mathrm{pool} \lll 1\bigr) \oplus \text{bits}
+$$$
 
 where $ \text{pool}' $ is the updated 32-bit accumulator, $ \lll 1 $ denotes a left-rotation of the accumulator by one bit position (implemented as `((pool << 1u) | (pool >> 31u)) ^ bits` in C++), and $ \text{bits} $ is the contribution folded in from the current entropy source. Applied iteratively — once per source per word, across seven sources and eight word iterations — this primitive prevents a pathological sequence of identical `bits` values from cancelling to zero, an unavoidable defect of plain bitwise-XOR accumulation, and diffuses the statistical bias of each individual source across all 32 bit positions of the accumulator. The eight resulting words are concatenated to form the raw seed passed immediately to Stage 2:
 
-$ K_{\text{hw}} = w_0 \| w_1 \| w_2 \| w_3 \| w_4 \| w_5 \| w_6 \| w_7 $
+$$$
+K_{\text{hw}} = w_0 \| w_1 \| w_2 \| w_3 \| w_4 \| w_5 \| w_6 \| w_7
+$$$
 
 where each
 
-$ w_i \in \{0,1\}^{32} $
+$$$
+w_i \in \{0,1\}^{32}
+$$$
 
 is the final accumulator value after all source contributions for iteration $ i $ have been folded in, and $ \| $ denotes concatenation. After Stage 2 consumes this seed, the 32-byte buffer is scrubbed from the stack with `memset()` to prevent residual key material exposure.
 
@@ -601,41 +637,59 @@ is the final accumulator value after all source contributions for iteration $ i 
 
 The second stage resolves the remaining deficiency: $ K_{\text{hw}} $ remains a non-uniform random variable whose effective entropy is orders of magnitude below the 256-bit security parameter that a full-strength ChaCha20 key nominally requires.
 
-$ K_{\text{hw}} \in \{0,1\}^{256} $
+$$$
+K_{\text{hw}} \in \{0,1\}^{256}
+$$$
 
 Under conservative assumptions, this effective entropy is approximately:
 
-$ H_{\text{raw}} \approx 24\text{–}32 $
+$$$
+H_{\text{raw}} \approx 24\text{–}32
+$$$
 
 bits.
 
 Using this seed directly as cryptographic key material would allow an adversary to enumerate the key space far faster than $ 2^{256} $ operations. `initCSPRNG()` addresses this through one-way cryptographic conditioning: $ K_{\text{hw}} $ is installed as the 256-bit ChaCha20 key via `s_chacha.setKey(hardwareSeed, 32)`, and a fixed 8-byte zero IV is set via `s_chacha.setIV(zeroIV, 8)`:
 
-$ IV = 0^{64} $
+$$$
+IV = 0^{64}
+$$$
 
 The Rhys Weatherley `ChaCha` library operates in the original djb-ChaCha configuration with a 64-bit nonce — distinct from the 12-byte IETF nonce used by the C2P-ARQ packet cipher. The zero IV is safe because $ K_{\text{hw}} $ is freshly derived from physical entropy on every power cycle; the resulting pair is therefore unique across sessions with overwhelming probability:
 
-$ (K_{\text{hw}},\, IV) $
+$$$
+(K_{\text{hw}},\, IV)
+$$$
 
 `s_fillKeystreamBlock()` then produces the first 64-byte keystream block by encrypting a zero-filled buffer in-place:
 
-$ B_0 = \text{ChaCha20}(K_{\text{hw}},\, 0^{64},\, c_0) $
+$$$
+B_0 = \text{ChaCha20}(K_{\text{hw}},\, 0^{64},\, c_0)
+$$$
 
 where the all-zero plaintext XORed with the ChaCha20 keystream yields the keystream directly — `output = 0x00...0 XOR keystream = keystream` — without requiring a second 64-byte allocation. The entire 64-byte block $ B_0 $ is stored in `s_keystreamBuf` and constitutes the initial CSPRNG cache. Subsequent calls to `getSecureRandom32()` consume 4 bytes of `s_keystreamBuf` per invocation; when the 64 bytes are exhausted, `s_fillKeystreamBlock()` is called again, producing block $ B_n $:
 
-$ B_n = \text{ChaCha20}(K_{\text{hw}},\, 0^{64},\, c_0 + n) $
+$$$
+B_n = \text{ChaCha20}(K_{\text{hw}},\, 0^{64},\, c_0 + n)
+$$$
 
 where
 
-$ c_0 + n $
+$$$
+c_0 + n
+$$$
 
 is ChaCha20's internal 64-bit block counter, ensuring
 
-$ B_n \neq B_m $
+$$$
+B_n \neq B_m
+$$$
 
 for all
 
-$ n \neq m $
+$$$
+n \neq m
+$$$
 
 and yielding a non-repeating keystream for up to $ 2^{64} $ blocks — capacity far beyond any plausible C2P-ARQ session lifetime.
 
@@ -669,7 +723,9 @@ The architectural coupling between the entropy domain and the protocol domain is
 
 Forward secrecy across sessions is maintained not by entropy replenishment but by nonce erasure. After every session close — whether via a successful FIN handshake or via `suspendSession()` — `s_sessionNonce` is overwritten with zeros (`memset(s_sessionNonce, 0, HELLO_NONCE_SIZE)`). A subsequent session uses the next block of the ChaCha20 keystream for its nonce, which is computationally independent of all prior blocks. An adversary who captures `B_n` cannot recover any nonce derived from:
 
-$ B_0, \ldots, B_{n-1} $
+$$$
+B_0, \ldots, B_{n-1}
+$$$
 
 without inverting ChaCha20, satisfying backward secrecy. An adversary who captures the current CSPRNG state cannot predict any future nonce if the ChaCha20 counter has advanced — a property guaranteed by the counter-mode construction.
 
@@ -679,7 +735,9 @@ C2P-ARQ is a custom stateful session-layer protocol that simultaneously provides
 
 The underlying transport model is Stop-and-Wait ARQ: the transmitter sends exactly one frame and then blocks all progress in a `WAITING_*` FSM state until it receives an explicit one-byte acknowledgement or exhausts the per-state retry limit (`MAX_RETRIES = 50`, `ACK_TIMEOUT_MS = 50 ms`). This model is appropriate for the 9600 bps UART channel: at one byte per approximately 1.04 ms, the largest on-wire frame — 17 bytes including preamble — occupies roughly 18 ms of channel time, leaving the 50 ms ACK window with a comfortable round-trip margin. The worst-case retry storm duration is therefore bounded at:
 
-$ 50 \times 50 = 2500\,\text{ms} $
+$$$
+50 \times 50 = 2500\,\text{ms}
+$$$
 
 This value is deliberately chosen to fall below the 3000 ms grace period of the receiver's Smart Dynamic Watchdog (Section 7.2).
 
@@ -699,7 +757,9 @@ The C2P-ARQ session lifecycle comprises three strictly sequenced phases. The SYN
 
 The SYN phase synchronises cryptographic state between the two nodes. Its single deliverable is the 12-byte session nonce, generated on the transmitter and replicated on the receiver.
 
-$ N_s \in \{0,1\}^{96} $
+$$$
+N_s \in \{0,1\}^{96}
+$$$
 
 In `TxState::IDLE`, the transmitter polls digital pin 3 (`INPUT_PULLUP`) with a 50 ms `millis()` debounce window. On the first confirmed button-press edge, the FSM resets `melodyIndex = 0` and `seqNum = 0`, then transitions to `TxState::SENDING_HELLO`. In `SENDING_HELLO`, `sendHelloPacket()` calls `getSecureRandom32()` three times in succession to fill `s_sessionNonce[0..11]` with three independent 32-bit CSPRNG words; it then calls `drainRxFifo()` — consuming and discarding all bytes currently waiting in the 64-byte hardware UART receive FIFO — before writing the complete 15-byte frame to `Serial`: two preamble bytes (`0xAA`, `0x55`), the `FLAG_SYN` flags byte (0x01), and the twelve nonce bytes. Immediately after transmission the FSM transitions to `TxState::WAITING_HELLO_ACK` and records `ackWaitStart = millis()`.
 
@@ -731,25 +791,37 @@ The DAT phase implements Stop-and-Wait ARQ with full ChaCha20-Poly1305 AEAD per 
 
 For the packet with sequence number $ i $ (where $ i $ is the current `seqNum`), the per-packet IV is derived from a local copy of $ N_s $ with bytes at positions 10 and 11 XORed with the high and low bytes of $ i $, respectively:
 
-$ IV_i[j] = \begin{cases} N_s[j] & 0 \le j \le 9 \\ N_s[10] \oplus \bigl\lfloor i \, / \, 256 \bigr\rfloor & j = 10 \\ N_s[11] \oplus (i \bmod 256) & j = 11 \end{cases} $
+$$$
+IV_i[j] = \begin{cases} N_s[j] & 0 \le j \le 9 \\ N_s[10] \oplus \bigl\lfloor i \, / \, 256 \bigr\rfloor & j = 10 \\ N_s[11] \oplus (i \bmod 256) & j = 11 \end{cases}
+$$$
 
 The original `s_sessionNonce` is never mutated; the XOR is applied exclusively to a stack-allocated copy `packetNonce[HELLO_NONCE_SIZE]`. The mapping is injective over the 16-bit domain:
 
-$ i \mapsto IV_i $
+$$$
+i \mapsto IV_i
+$$$
 
-$ i \in [0, 65535] $
+$$$
+i \in [0, 65535]
+$$$
 
 If
 
-$ i \neq i' $
+$$$
+i \neq i'
+$$$
 
 then:
 
-$ ((i \bmod 256) \neq (i' \bmod 256)) \;\lor\; (\lfloor i / 256 \rfloor \neq \lfloor i' / 256 \rfloor) $
+$$$
+((i \bmod 256) \neq (i' \bmod 256)) \;\lor\; (\lfloor i / 256 \rfloor \neq \lfloor i' / 256 \rfloor)
+$$$
 
 and therefore:
 
-$ IV_i \neq IV_{i'} $
+$$$
+IV_i \neq IV_{i'}
+$$$
 
 All 65 536 sequence-number values therefore produce distinct per-packet nonces within a single session.
 
@@ -816,7 +888,9 @@ Both packet types are declared with `#pragma pack(push, 1)` / `#pragma pack(pop)
 
 The first three bytes of every `DataPacket` body — the `flags` byte (1 byte) and the little-endian `seq_num` (2 bytes) — are transmitted in cleartext and constitute the Additional Authenticated Data (AAD) of the ChaCha20-Poly1305 AEAD construction. The Poly1305 tag $ \tau $ is computed over the concatenation of the AAD, the ciphertext, their respective 16-byte-aligned padding blocks, and their encoded lengths — the standard IETF ChaCha20-Poly1305 construction:
 
-$ \begin{aligned} \tau &= \text{Poly1305}_{K_{\text{MAC}}} \bigl( \text{AAD} \;\|\; \text{pad}_{16}(\text{AAD}) \;\|\; \text{ciphertext} \\ &\quad \|\; \text{pad}_{16}(\text{ciphertext}) \;\|\; \text{len}_{64}(\text{AAD}) \;\|\; \text{len}_{64}(\text{ciphertext}) \bigr) \end{aligned} $
+$$$
+\begin{aligned} \tau &= \text{Poly1305}_{K_{\text{MAC}}} \bigl( \text{AAD} \;\|\; \text{pad}_{16}(\text{AAD}) \;\|\; \text{ciphertext} \\ &\quad \|\; \text{pad}_{16}(\text{ciphertext}) \;\|\; \text{len}_{64}(\text{AAD}) \;\|\; \text{len}_{64}(\text{ciphertext}) \bigr) \end{aligned}
+$$$
 
 where $ K_{\text{MAC}} $ is the 32-byte one-time key derived from block 0 of the ChaCha20 keystream under the per-packet nonce $ IV_i $. Because `flags` and `seq_num` are bound into the Poly1305 computation, any single-bit corruption of either field — whether from the noise injector or from an active adversary attempting frame reclassification or reordering — invalidates $ \tau $ with probability $ 1 - 2^{-64} $, causing the constant-time `memcmp` check to fail and triggering `NACK_BYTE` and retransmission. Neither field requires encryption: their integrity is enforced by the MAC rather than by confidentiality, and neither carries secret content.
 
@@ -880,11 +954,15 @@ Within `TxState::WAITING_ACK`, `tx_loop()` invokes `Serial.available()` on every
 
 The zero-byte-received branch of `WAITING_ACK` implements a non-blocking ACK timeout using a `millis()` delta comparison:
 
-$ (t_{\text{now}} - t_{\text{send}}) \ge ACK\_TIMEOUT\_MS $
+$$$
+(t_{\text{now}} - t_{\text{send}}) \ge ACK\_TIMEOUT\_MS
+$$$
 
 where
 
-$ t_{\text{now}} = \texttt{millis()}, \qquad t_{\text{send}} = \texttt{ackWaitStart} $
+$$$
+t_{\text{now}} = \texttt{millis()}, \qquad t_{\text{send}} = \texttt{ackWaitStart}
+$$$
 
 with `ackWaitStart` being the `millis()` snapshot taken immediately after `formAndSendPacket()` returns. When the condition holds, the retry counter $ R $ is incremented by one, and — provided the runaway-prevention guard passes — the same packet is retransmitted and `ackWaitStart` is reset to restart the window.
 
@@ -894,11 +972,15 @@ Both the NACK path and the timeout path increment $ R $, but they differ in one 
 
 Without a hard upper bound on $ R $, a sustained jamming event would trap the transmitter in `WAITING_ACK` indefinitely: every retransmission would be corrupted, every ACK would be lost, and neither endpoint could exit its current state through any channel event reachable under continuous interference. This constitutes a protocol-layer deadlock from which no graceful recovery is possible without explicit out-of-band support. C2P-ARQ eliminates this deadlock by enforcing the following precondition before every retransmission:
 
-$ R < MAX\_RETRIES $
+$$$
+R < MAX\_RETRIES
+$$$
 
 When the guard fails:
 
-$ R \ge MAX\_RETRIES $
+$$$
+R \ge MAX\_RETRIES
+$$$
 
 `suspendSession()` is called unconditionally and the retransmission path is not entered.
 
@@ -915,11 +997,15 @@ $$$
 
 This bound is not arbitrary: it is constrained by the receiver's `NETWORK_GRACE_PERIOD_MS = 3000 ms` Smart Dynamic Watchdog period. After each authenticated `DataPacket`, the receiver sets its session-release timeout to `current_timeout_limit = duration_ms + NETWORK_GRACE_PERIOD_MS`. The following inequality guarantees that the receiver will not zero `s_sessionNonce` and reset to `WAIT_AA` before the transmitter has finished its complete retry cycle and entered `RECONNECTING`:
 
-$ T_{\text{storm}} < NETWORK\_GRACE\_PERIOD\_MS $
+$$$
+T_{\text{storm}} < NETWORK\_GRACE\_PERIOD\_MS
+$$$
 
 Explicitly:
 
-$ 2500 < 3000 $
+$$$
+2500 < 3000
+$$$
 
 Were the receiver to release its nonce buffer prematurely, the first `DataPacket` dispatched after a successful reconnect handshake would fail MAC verification — because the receiver would have already erased `s_sessionNonce` and could not derive the correct per-packet IV — forcing an additional SYN round-trip and defeating the seamlessness of Auto-Resume. The 500 ms margin eliminates this race condition by construction. The complete decision logic for `TxState::WAITING_ACK`, including all three event branches and the runaway-prevention gate, is illustrated in .ref {waiting-ack-decision-tree}.
 
@@ -983,23 +1069,33 @@ The resulting transmitter-side AEAD pipeline is summarized in .ref {sendpacket-a
 
 The receiver's authentication gate is formalised as a deterministic binary predicate. Let $ K $ denote `MASTER_PSK`, $ IV_i $ the per-packet nonce derived for sequence number $ i $, $ A $ the 3-byte AAD vector `{flags, seq_lo, seq_hi}`, $ C $ the 4-byte received ciphertext in `DataPacket.payload`, and $ \tau_r $ the received 8-byte truncated MAC in `DataPacket.mac`. The AEAD decryption-and-verification function performed by `authenticateAndPlay()` returns either the 4-byte plaintext $ P $ or the rejection symbol $ \bot $:
 
-$ \text{Verify}(K,\; IV_i,\; A,\; C,\; \tau_r) \;\to\; \{P,\; \bot\} $
+$$$
+\operatorname{Verify}(K,\; IV_i,\; A,\; C,\; \tau_r) \;\to\; \{P,\; \bot\}
+$$$
 
 Let
 
-$ \tau_e \in \{0,1\}^{128} $
+$$$
+	au_e \in \{0,1\}^{128}
+$$$
 
 denote the full 16-byte expected tag produced by `s_cipher.computeTag(expectedMac, 16)` after executing the symmetric AEAD pipeline over
 
-$ (K,\, IV_i,\, A,\, C) $
+$$$
+(K,\, IV_i,\, A,\, C)
+$$$
 
 Let $ \text{trunc}_8(\tau_e) $ denote the first `TRUNCATED_MAC_SIZE = 8` bytes of $ \tau_e $. The outcome is:
 
-$ \text{Verify}(K,\; IV_i,\; A,\; C,\; \tau_r) = \begin{cases} P & \text{if } \text{trunc}_8(\tau_e) = \tau_r \\ \bot & \text{otherwise} \end{cases} $
+$$$
+\operatorname{Verify}(K,\; IV_i,\; A,\; C,\; \tau_r) = \begin{cases} P & \text{if } \text{trunc}_8(\tau_e) = \tau_r \\ \bot & \text{otherwise} \end{cases}
+$$$
 
 where the equality is evaluated by the constant-time `memcmp(expectedMac, pkt->mac, TRUNCATED_MAC_SIZE)` to prevent timing side-channel leakage. The function returns $ P $ = `{note_index, duration_ms}` in the success branch; the failure branch emits `NACK_BYTE` on the feedback channel and calls `resetParser()`. `startNote()` is invoked exclusively on the branch
 
-$ P \neq \bot $
+$$$
+P \neq \bot
+$$$
 
 — the security invariant documented explicitly in `receiver.h`. Upon success, the `note_index` field of $ P $ is additionally checked against the bound `noteIndex < NOTE_DICT_SIZE` before indexing `universal_notes[]`; a valid MAC does not guarantee an in-range note index, and an out-of-bounds read on ATmega328P SRAM would access adjacent protocol state with undefined consequences.
 
@@ -1034,19 +1130,27 @@ if (noteIndex == REST_INDEX) {
 
 The forgery probability for the truncated-tag scheme follows from the Poly1305 security proof. For a uniformly random one-time MAC key
 
-$ r \in \{0,1\}^{128} $
+$$$
+r \in \{0,1\}^{128}
+$$$
 
 derived from ChaCha20 block 0 under $ (K, IV_i) $, the probability that a computationally unbounded adversary produces a forgery $ \tau' $ satisfying:
 
-$ \text{trunc}_8(\tau') = \text{trunc}_8(\tau_e) $
+$$$
+\operatorname{trunc}_8(\tau') = \text{trunc}_8(\tau_e)
+$$$
 
 without knowledge of $ K $ is at most $ 2^{-64} $ per frame, independently of the number of prior valid MAC-ciphertext observations. At 9600 bps the data channel supports at most:
 
-$ \left\lfloor \frac{9600}{17 \times 8} \right\rfloor = 70 $
+$$$
+\left\lfloor \frac{9600}{17 \times 8} \right\rfloor = 70
+$$$
 
 DataPacket frames per second. At this rate a brute-force forged-MAC campaign exhausts the $ 2^{64} $ tag space in approximately:
 
-$ \frac{2^{64}}{70} \approx 2.6 \times 10^{17}\,\text{s} $
+$$$
+\frac{2^{64}}{70} \approx 2.6 \times 10^{17}\,\text{s}
+$$$
 
 roughly 8 billion years at the maximum channel rate.
 
@@ -1056,7 +1160,9 @@ roughly 8 billion years at the maximum channel rate.
 
 ChaCha20 is a stream cipher whose security rests on the strict uniqueness of the $ (K,\, IV) $ pair across all encryptions performed under key $ K $. If two distinct plaintexts $ P_1 $ and $ P_2 $ are encrypted under the same $ (K,\, IV) $, the XOR of the resulting ciphertexts directly exposes the XOR of the plaintexts:
 
-$ C_1 \oplus C_2 = P_1 \oplus P_2 $
+$$$
+C_1 \oplus C_2 = P_1 \oplus P_2
+$$$
 
 because the deterministic ChaCha20 keystream cancels identically. In C2P-ARQ terms, the four-byte payload carries `note_index` and `duration_ms`; if both values are known or guessable for one message — for example, if a rest note `REST_INDEX = 255` with a known duration was previously observed — the second plaintext is immediately recoverable. Moreover, an IV collision exposes the Poly1305 one-time MAC key $ r $, which is derived as the first 32 bytes of ChaCha20 block 0 under $ (K,\, IV) $: with $ r $ known, an adversary can forge a valid Poly1305 tag for any chosen ciphertext and inject it into the session. IV uniqueness is therefore not a security preference but a protocol correctness prerequisite.
 
@@ -1080,21 +1186,31 @@ packetNonce[10] ^= static_cast<uint8_t>((seqNum >> 8u) & 0xFFu);
 packetNonce[11] ^= static_cast<uint8_t>(seqNum         & 0xFFu);
 ```
 
-$ IV_i[k] = \begin{cases} S[k] & k \in \{0, 1, \ldots, 9\} \\ S[10] \oplus \lfloor i / 256 \rfloor & k = 10 \\ S[11] \oplus (i \bmod 256) & k = 11 \end{cases} $
+$$$
+IV_i[k] = \begin{cases} S[k] & k \in \{0, 1, \ldots, 9\} \\ S[10] \oplus \lfloor i / 256 \rfloor & k = 10 \\ S[11] \oplus (i \bmod 256) & k = 11 \end{cases}
+$$$
 
 where
 
-$ S \in \{0,1\}^{96} $
+$$$
+S \in \{0,1\}^{96}
+$$$
 
 is the 12-byte session nonce stored in `s_sessionNonce` and established during the SYN handshake; $ i $ is the 16-bit packet sequence number (`uint16_t seqNum`) with:
 
-$ i \in \{0, 1, \ldots, 65535\} $
+$$$
+i \in \{0, 1, \ldots, 65535\}
+$$$
 
-$ \lfloor i / 256 \rfloor $
+$$$
+\lfloor i / 256 \rfloor
+$$$
 
 is the high byte of $ i $, computed as `(seqNum >> 8u) & 0xFFu`; and
 
-$ i \bmod 256 $
+$$$
+i \bmod 256
+$$$
 
 is the low byte, computed as `seqNum & 0xFFu`. Bytes 0–9 of the nonce are left unmodified; only bytes 10 and 11 are perturbed. The immutability of `s_sessionNonce` is enforced by the code comment present in both firmware files: `// NEVER XOR directly into s_sessionNonce — would corrupt every subsequent IV`. The per-packet nonce derivation procedure is illustrated in .ref {per-packet-nonce-derivation}.
 
@@ -1116,27 +1232,39 @@ is the low byte, computed as `seqNum & 0xFFu`. Bytes 0–9 of the nonce are left
 
 The mapping
 
-$ f : \{0, \ldots, 65535\} \to \{0,1\}^{96},\; i \mapsto IV_i $
+$$$
+f : \{0, \ldots, 65535\} \to \{0,1\}^{96},\; i \mapsto IV_i
+$$$
 
 is injective. Suppose
 
-$ IV_i = IV_j \quad \text{for some } i \neq j $
+$$$
+IV_i = IV_j \quad \text{for some } i \neq j
+$$$
 
 Since bytes 0–9 of both nonces equal
 
-$ S[0..9] $
+$$$
+S[0..9]
+$$$
 
 identically, equality of $ IV_i $ and $ IV_j $ reduces to the two conditions:
 
-$ \begin{aligned} S[10] \oplus i_{\text{hi}} &= S[10] \oplus j_{\text{hi}} \\ S[11] \oplus i_{\text{lo}} &= S[11] \oplus j_{\text{lo}} \end{aligned} $
+$$$
+\begin{aligned} S[10] \oplus i_{\text{hi}} &= S[10] \oplus j_{\text{hi}} \\ S[11] \oplus i_{\text{lo}} &= S[11] \oplus j_{\text{lo}} \end{aligned}
+$$$
 
 Applying the XOR cancellation law to each equation yields:
 
-$ i_{\text{hi}} = j_{\text{hi}}, \qquad i_{\text{lo}} = j_{\text{lo}} $
+$$$
+i_{\text{hi}} = j_{\text{hi}}, \qquad i_{\text{lo}} = j_{\text{lo}}
+$$$
 
 hence:
 
-$ i = j $
+$$$
+i = j
+$$$
 
 — a contradiction. Therefore all 65,536 possible sequence numbers produce a distinct 96-bit nonce, and within any single session no IV repetition can occur regardless of message content or session duration. The 16-bit range of $ i $ comfortably exceeds the practical upper bound imposed by the ATmega328P Flash budget: the Super Mario Bros. melody stored in `PROGMEM` comprises 80 notes, far below the 65,536-packet ceiling.
 
@@ -1150,7 +1278,9 @@ The derivation employs bitwise XOR rather than modular addition to perturb bytes
 
 Unlike Flash or EEPROM, SRAM is a volatile medium that retains its contents as long as supply voltage is maintained and loses them on power removal. This power-dependency does not, however, eliminate all physical extraction paths. An adversary with physical access to a live node can extract SRAM contents via the debugWIRE/ISP interface by halting the CPU between two instructions, by attaching a probe to the I2C or UART bus and triggering a soft reset with a subsequent memory-read command, or — in a cold-boot variant — by exploiting the residual charge retention that CMOS SRAM cells exhibit for tens to hundreds of milliseconds below the minimum operating voltage. For a session nonce
 
-$ S \in \{0,1\}^{96} $
+$$$
+S \in \{0,1\}^{96}
+$$$
 
 resident in SRAM, any of these paths yields the complete per-packet IV derivation capability described in Section 6.2: from $ S $ and the publicly observable sequence numbers $ i $, all $ IV_i $ are reconstructible, and all session ciphertexts become decryptable against the static `MASTER_PSK` compiled into Flash.
 
@@ -1158,35 +1288,51 @@ resident in SRAM, any of these paths yields the complete per-packet IV derivatio
 
 C2P-ARQ addresses the data remanence threat through a mandatory zeroization policy: at every session boundary — clean or unclean — the 12-byte session nonce is immediately overwritten with zero bytes. Let $ t_{\text{close}} $ denote the moment at which the terminal FSM transition fires and the first `memset` call executes. The operation is:
 
-$ S \;\leftarrow\; \mathbf{0}^{96} \quad \text{at} \quad t = t_{\text{close}} $
+$$$
+S \;\leftarrow\; \mathbf{0}^{96} \quad \text{at} \quad t = t_{\text{close}}
+$$$
 
 All $ n $ packets transmitted during the session were encrypted under nonces
 
-$ IV_0, IV_1, \ldots, IV_{n-1} $
+$$$
+IV_0, IV_1, \ldots, IV_{n-1}
+$$$
 
 derived from $ S $ per the mapping of Section 6.2. Setting
 
-$ S = \mathbf{0}^{96} $
+$$$
+S = \mathbf{0}^{96}
+$$$
 
 renders every $ IV_i $ irrecoverable from SRAM state: an adversary who obtains a RAM dump at any
 
-$ t > t_{\text{close}} $
+$$$
+t > t_{\text{close}}
+$$$
 
 observes only
 
-$ S_{\text{dump}} = \mathbf{0}^{96} $
+$$$
+S_{\text{dump}} = \mathbf{0}^{96}
+$$$
 
 Recovering any $ IV_i $ requires enumerating the original $ S $ over the full 96-bit nonce space. Even in the worst-case physical-access threat model in which `MASTER_PSK` has been extracted from Flash, the adversary's per-session decryption advantage is bounded by:
 
-$ \Pr\!\bigl[\mathcal{A}\!\bigl(\mathbf{0}^{96},\, \text{MASTER\_PSK}\bigr) \to P_i\bigr] \;\leq\; 2^{-96} $
+$$$
+\Pr\!\bigl[\mathcal{A}\!\bigl(\mathbf{0}^{96},\, \text{MASTER\_PSK}\bigr) \to P_i\bigr] \;\leq\; 2^{-96}
+$$$
 
 where $ \mathcal{A} $ is any probabilistic polynomial-time adversary and $ P_i $ is any plaintext transmitted during the closed session. A brute-force nonce search at $ 10^9 $ guesses per second exhausts the full nonce space:
 
-$ 2^{96} \approx 7.9 \times 10^{28} $
+$$$
+2^{96} \approx 7.9 \times 10^{28}
+$$$
 
 in approximately:
 
-$ \frac{2^{96}}{10^9} \approx 7.9 \times 10^{19}\,\text{s} $
+$$$
+\frac{2^{96}}{10^9} \approx 7.9 \times 10^{19}\,\text{s}
+$$$
 
 — more than $ 180 $ times the age of the observable universe. This establishes forward secrecy at the session layer: current SRAM state yields no decryption capability over ciphertexts from any closed session.
 
@@ -1284,7 +1430,9 @@ Both firmware variants apply a fifth `memset` call — not to `s_sessionNonce` b
 
 Without this scrub, the raw TRNG output — carrying up to:
 
-$ H_{\text{raw}} \approx 24\text{–}32 $
+$$$
+H_{\text{raw}} \approx 24\text{–}32
+$$$
 
 bits of physical entropy prior to ChaCha20 conditioning — would remain accessible at a fixed stack address for the remainder of the program's execution, providing a partial foothold for an adversary who can observe SRAM after initialisation.
 
@@ -1298,7 +1446,9 @@ The cryptographic mechanisms analysed in Section 6 — AEAD authentication, per-
 
 A physically active attacker, however, need not engage with the cryptographic layer at all. By injecting sufficient noise to corrupt every transmitted bit, the attacker transforms the channel into one on which no valid frame can reach the receiver. The Poly1305 MAC correctly rejects every corrupted frame; yet this correct behaviour does nothing to advance the melody. Each rejected frame consumes one unit of the retry budget. When `MAX_RETRIES = 50` retries at `ACK_TIMEOUT_MS = 50 ms` each are exhausted — a sustained jamming interval of:
 
-$ 50 \times 50 = 2{,}500\,\text{ms} $
+$$$
+50 \times 50 = 2{,}500\,\text{ms}
+$$$
 
 — the session terminates. Security has been maintained perfectly; availability has been destroyed.
 
@@ -1323,15 +1473,21 @@ SH2SC-EDT avoids this regression by partitioning the transmitter's runtime state
 
 Let
 
-$ \mathcal{M} = \langle P_0, P_1, \ldots, P_{M-1} \rangle $
+$$$
+\mathcal{M} = \langle P_0, P_1, \ldots, P_{M-1} \rangle
+$$$
 
 be the melody of $ M $ notes. A *disruption event* at index $ k $ is defined as the execution of `suspendSession()` while `melodyIndex` $ = k $. Define $ k_j $ as the value of `melodyIndex` at the moment the $ j $-th disruption occurs. The C2P-ARQ Self-Healing invariant states that the subsequent session $ \mathcal{S}_{j+1} $ begins transmission from $ P_{k_j} $:
 
-$ \mathtt{melodyIndex}[\mathcal{S}_{j+1}] \;=\; k_j \qquad \forall\, j \in \{1, \ldots, n\} $
+$$$
+\mathtt{melodyIndex}[\mathcal{S}_{j+1}] \;=\; k_j \qquad \forall\, j \in \{1, \ldots, n\}
+$$$
 
 For any sequence of $ n \geq 0 $ disruption events, the note delivered in the first DataPacket of $ \mathcal{S}_{j+1} $ is therefore $ P_{k_j} $, not $ P_0 $. The complete melody $ \mathcal{M} $ is eventually delivered without gaps provided that at least one session for each remaining suffix
 
-$ \langle P_{k_j}, \ldots, P_{M-1} \rangle $
+$$$
+\langle P_{k_j}, \ldots, P_{M-1} \rangle
+$$$
 
 completes without disruption.
 
@@ -1394,11 +1550,15 @@ Prior to the first `DataPacket` of the session — during the interval after `pr
 
 Let $ t_{\text{last}}^{(k)} $ denote the `millis()` timestamp recorded by the receiver immediately after authenticating packet $ k $, and let $ d_k $ denote the note duration extracted from that packet's plaintext. The Dynamic Smart Watchdog fires — zeroing `s_sessionNonce`, clearing `s_sessionActive`, and resetting the byte-parser — when and only when:
 
-$ t_{\text{now}} - t_{\text{last}}^{(k)} \;>\; d_k + T_{\text{grace}} $
+$$$
+t_{\text{now}} - t_{\text{last}}^{(k)} \;>\; d_k + T_{\text{grace}}
+$$$
 
 where $ t_{\text{now}} $ is the value of `millis()` at the current `rx_loop()` invocation,
 
-$ d_k \in \mathbb{N}_{>0} $
+$$$
+d_k \in \mathbb{N}_{>0}
+$$$
 
 is the duration in milliseconds of the $ k $-th authenticated note, and $ T_{\text{grace}} = 3000\,\text{ms} $ is the fixed `NETWORK_GRACE_PERIOD_MS` constant compiled into both firmware images. The right-hand side is the minimum time that must elapse between the last authenticated packet and the watchdog trigger: $ d_k $ milliseconds for the note itself to play, plus $ T_{\text{grace}} $ milliseconds of additional tolerance absorbing the transmitter's worst-case retry storm and round-trip frame time.
 
@@ -1435,15 +1595,21 @@ The protocol eliminates this race by construction. The worst-case TX retry storm
 
 The grace period satisfies:
 
-$ T_{\text{grace}} = 3000\,\text{ms} > T_{\text{storm}} = 2500\,\text{ms} $
+$$$
+T_{\text{grace}} = 3000\,\text{ms} > T_{\text{storm}} = 2500\,\text{ms}
+$$$
 
 providing a 500 ms safety margin. Since the watchdog timeout is
 
-$ d_k + T_{\text{grace}} $
+$$$
+d_k + T_{\text{grace}}
+$$$
 
 and
 
-$ d_k \geq 0 $
+$$$
+d_k \geq 0
+$$$
 
 the receiver is guaranteed to hold its session nonce for at least $ T_{\text{grace}} = 3000\,\text{ms} $ beyond the last authenticated packet — longer than the transmitter can remain in any `WAITING_*` state before entering `RECONNECTING`. The source comment at `NETWORK_GRACE_PERIOD_MS` reflects this precisely: *"Absorbs the worst-case TX retry storm: MAX\_RETRIES × ACK\_TIMEOUT\_MS = 50 × 50 ms = 2500 ms. Value 3000 ms provides 500 ms margin above that maximum."* The two nodes thus converge to their respective idle states — `TxState::RECONNECTING` and the byte-parser reset to `WAIT_AA` — in the correct temporal order, making the subsequent SYN handshake unconditionally successful.
 
@@ -1521,11 +1687,15 @@ The combined TX-drain and RX-preamble-hunt desynchronization recovery process is
 
 The two-byte preamble `0xAA 0x55` is chosen to minimise the probability that random channel noise produces a spurious preamble match. Let $ b_i $ denote the value of an arbitrary byte drawn uniformly at random from
 
-$ \{0, \ldots, 255\} $
+$$$
+\{0, \ldots, 255\}
+$$$
 
 The probability that two consecutive noise bytes constitute a valid preamble is:
 
-$ P\!\bigl(b_i = \mathtt{0xAA} \;\land\; b_{i+1} = \mathtt{0x55}\bigr) \;=\; \frac{1}{256} \times \frac{1}{256} \;=\; 2^{-16} \;\approx\; 1.52 \times 10^{-5} $
+$$$
+P\!\bigl(b_i = \mathtt{0xAA} \;\land\; b_{i+1} = \mathtt{0x55}\bigr) \;=\; \frac{1}{256} \times \frac{1}{256} \;=\; 2^{-16} \;\approx\; 1.52 \times 10^{-5}
+$$$
 
 where $ b_i $ and $ b_{i+1} $ are two consecutive independently uniformly distributed random bytes, $ \mathtt{0xAA} = 170_{10} $ is `SYNC_BYTE_1`, and $ \mathtt{0x55} = 85_{10} $ is `SYNC_BYTE_2`. The probability $ 2^{-16} \approx 1.52 \times 10^{-5} $ represents the expected rate of spurious preamble matches per two-byte window under the worst-case assumption that the noise source is a uniformly random byte generator — the maximum-entropy adversary for byte-value statistics. In practice, a 1 kHz XOR pulse-generator noise source produces bit-flips rather than uniformly random character-valued bytes, leading to correlated corruptions that cluster around the neighbourhood of the original data value. The false preamble rate under this physically realistic noise model is strictly lower than the theoretical $ 2^{-16} $ bound.
 
@@ -1565,39 +1735,55 @@ The logic-chain architecture of the Digital Noise Generator is illustrated in .r
 
 At the logic level, the AND stage operates as an enable gate. Let
 
-$ P(t) \in \{0,1\} $
+$$$
+P(t) \in \{0,1\}
+$$$
 
 denote the 2000 Hz pulse train and let
 
-$ S \in \{0,1\} $
+$$$
+S \in \{0,1\}
+$$$
 
 denote the state of the manual switch, where $ S = 0 $ corresponds to the open state and $ S = 1 $ to the closed state. The disturbance signal delivered to the XOR input is then
 
-$ N(t) = P(t) \land S $
+$$$
+N(t) = P(t) \land S
+$$$
 
 so that, when the switch is open,
 
-$ N(t) = P(t) \land 0 = 0 $
+$$$
+N(t) = P(t) \land 0 = 0
+$$$
 
 for all $ t $, and the noise path is electrically blocked. In this quiescent configuration, the XOR stage receives a zero-valued disturbance input and therefore behaves transparently with respect to the serial line.
 
 The corruption mechanism is governed by the Boolean algebra of XOR. If $ V_{\text{uart}}(t) $ denotes the instantaneous logic level on the clean UART line, then the output delivered toward Node B is
 
-$ V_{\text{out}}(t) = V_{\text{uart}}(t) \oplus N(t) $
+$$$
+V_{\text{out}}(t) = V_{\text{uart}}(t) \oplus N(t)
+$$$
 
 which yields the two operative identities
 
-$ V_{\text{uart}} \oplus 0 = V_{\text{uart}}, \qquad V_{\text{uart}} \oplus 1 = \neg V_{\text{uart}} $
+$$$
+V_{\text{uart}} \oplus 0 = V_{\text{uart}}, \qquad V_{\text{uart}} \oplus 1 = \neg V_{\text{uart}}
+$$$
 
 These relations formalize the physical behaviour of the injector. With the switch open, the AND output is forced low and the UART signal passes through the XOR stage without alteration. With the switch closed, the AND output reproduces the 2000 Hz pulse train, and every interval in which that train is logically high forces the XOR stage to invert the instantaneous level presently carried by the UART conductor. The channel is therefore not overwritten with an independent waveform; it is conditionally polarity-inverted in real time.
 
 The destructive effect follows from the timing relationship between the disturbance source and the asynchronous serial link. At 9600 bps, one UART bit occupies
 
-$ T_{\text{bit}} = \frac{1}{9600} \approx 104\,\mu s $
+$$$
+T_{\text{bit}} = \frac{1}{9600} \approx 104\,\mu s
+$$$
 
 whereas a 2000 Hz disturbance source has period
 
-$ T_{\text{jam}} = \frac{1}{2000} = 500\,\mu s $
+$$$
+T_{\text{jam}} = \frac{1}{2000} = 500\,\mu s
+$$$
 
 which is substantially shorter than the duration of a complete 10-bit UART character (approximately $ 1.04 \, ms $ including start and stop bits). Consequently, once the injector is enabled, polarity inversions occur on a sub-frame timescale and intersect multiple symbol intervals during a packet transmission. Any such inversion that strikes the authenticated header, ciphertext, or truncated Poly1305 tag changes the received bit pattern and causes the C2P-ARQ integrity check to fail deterministically. The Digital Noise Generator therefore serves as a physically grounded bit-flip instrument: it does not emulate packet loss at the software level, but instead corrupts the electrical representation of the frame in transit.
 
@@ -1619,11 +1805,15 @@ On the receiver side (Node B), no valid preamble is accumulated at parser level 
 
 The physical mechanism is captured by the XOR injection model
 
-$ S_{\text{rx}}(t) = S_{\text{tx}}(t) \oplus N(t) $
+$$$
+S_{\text{rx}}(t) = S_{\text{tx}}(t) \oplus N(t)
+$$$
 
 where $ S_{\text{tx}}(t) $ is the clean UART waveform from Node A, $ N(t) $ is the attacker disturbance process, and $ S_{\text{rx}}(t) $ is the waveform observed at Node B input. Whenever
 
-$ N(t)=1 $
+$$$
+N(t)=1
+$$$
 
 the instantaneous UART level is inverted; therefore, even transient high intervals in $ N(t) $ can invalidate the start/data/stop structure of asynchronous serial symbols before any protocol-layer validation is reached.
 
@@ -1644,7 +1834,9 @@ the instantaneous UART level is inverted; therefore, even transient high interva
 
 After the boot-time desynchronization observed in Scenario 1, the attacker is temporarily disabled by opening the noise-injector switch. In this configuration, the Digital Noise Generator is OFF and the disturbance process is quiescent:
 
-$ N(t)=0 $
+$$$
+N(t)=0
+$$$
 
 The purpose of this scenario is to establish a baseline of how a legitimate, encrypted C2P-ARQ DATA delivery manifests at both the physical layer and the protocol layer when the channel is clean and the endpoints are already synchronized.
 
@@ -1656,7 +1848,9 @@ The topology view makes the clean-channel assumption explicit. With the switch o
 
 The physical-layer manifestation of this baseline is shown by the oscilloscope capture in .ref {baseline-clean-data-oscilloscope}. Under the XOR injection model used throughout this section, the received waveform is
 
-$ S_{\text{rx}}(t) = S_{\text{tx}}(t) \oplus N(t) = S_{\text{tx}}(t) \oplus 0 = S_{\text{tx}}(t) $
+$$$
+S_{\text{rx}}(t) = S_{\text{tx}}(t) \oplus N(t) = S_{\text{tx}}(t) \oplus 0 = S_{\text{tx}}(t)
+$$$
 
 so the channel is electrically transparent. The oscilloscope trace exhibits clean, sharp square-wave transitions between 0 V and 5 V, and stable symbol intervals with no bit-level polarity inversions superposed onto the UART stream.
 
@@ -1698,7 +1892,9 @@ This lack of observable structure is the expected manifestation of semantic secu
 
 In this scenario, the attacker re-activates the Digital Noise Generator while payload packets are in flight. The forward channel is therefore driven by a non-quiescent disturbance process,
 
-$ N(t) \neq 0 $
+$$$
+N(t) \neq 0
+$$$
 
 and the receiver input becomes an XOR-composed waveform rather than a direct representation of the transmitter line. The experiment exposes a critical failure mode in embedded communication under interference: the transmitter and receiver can enter divergent operational states even when both endpoints continue executing correctly according to their local logic.
 
@@ -1709,11 +1905,15 @@ The .ref {jammed-data-desync-topology} captures the global topology during this 
 
 The physical-layer mechanism driving this divergence is shown in .ref {jammed-data-desync-oscilloscope}. With the attacker enabled, the receiver-side waveform satisfies
 
-$ S_{\text{rx}}(t) = S_{\text{tx}}(t) \oplus N(t) $
+$$$
+S_{\text{rx}}(t) = S_{\text{tx}}(t) \oplus N(t)
+$$$
 
 so any interval in which
 
-$ N(t)=1 $
+$$$
+N(t)=1
+$$$
 
 produces a polarity inversion of the instantaneous UART level. The oscilloscope trace exhibits a severely perturbed serial signal relative to the clean baseline: transitions occur within symbol windows that would otherwise remain stable, and the bit-level structure required for reliable asynchronous reconstruction is repeatedly violated. Under these conditions, correctly receiving a full preamble, header, ciphertext, and MAC as a single coherent frame becomes unlikely even if the receiver were exclusively dedicated to parsing.
 
@@ -1780,11 +1980,15 @@ The .ref {dead-air-rx-timeout-status} captures the receiver-side evidence of gra
 
 The physics of this dead-air channel is captured by the XOR injection model under an idle transmitter. If the transmitter output is quiescent and held at a constant logic level,
 
-$ S_{tx}(t) = Const $
+$$$
+S_{tx}(t) = Const
+$$$
 
 then the receiver-side line becomes
 
-$ S_{rx}(t) = Const \oplus N(t) $
+$$$
+S_{rx}(t) = Const \oplus N(t)
+$$$
 
 where $ N(t) $ is the attacker disturbance process delivered by the Digital Noise Generator. Because $ Const $ carries no information-bearing transitions, any observed edge activity at the receiver input is attributable solely to $ N(t) $. The .ref {dead-air-noise-oscilloscope} confirms this condition visually: the oscilloscope trace is dominated by continuous interference, demonstrating that the physical medium is filled exclusively with adversarial energy during this interstitial state.
 
@@ -1808,13 +2012,17 @@ The .ref {jammed-hello-retry-node-status} ties the reconnection attempt to the e
 
 At the physical layer, the transmitter is no longer quiescent as in Scenario 6. Instead, it is actively emitting `HelloPacket` waveforms into a channel that remains dominated by the attacker disturbance process. Under the XOR injection model, the receiver-side signal satisfies
 
-$ S_{rx}(t) = S_{tx_{hello}}(t) \oplus N(t) $
+$$$
+S_{rx}(t) = S_{tx_{hello}}(t) \oplus N(t)
+$$$
 
 where $ S_{tx_{hello}}(t) $ is the clean UART waveform corresponding to repeated `HelloPacket` transmissions and $ N(t) $ is the attacker-generated disturbance.
 
 The .ref {oscilloscope-capture-of-hello-packets-under-continued-jamming} shows the expected consequence of
 
-$ N(t) \neq 0 $
+$$$
+N(t) \neq 0
+$$$
 
 during active transmission: the clean, periodic structure of asynchronous serial bits is repeatedly violated by interference-driven inversions, so the receiver-side waveform no longer preserves the stable per-bit windows required for deterministic decoding.
 
@@ -1840,7 +2048,9 @@ The reconnection loop is summarized in .ref {jammed-hello-retry-sequence}. Node 
 
 In this scenario, the prolonged physical-layer denial finally ceases: the attacker deactivates the Digital Noise Generator, and the disturbance process becomes quiescent,
 
-$ N(t)=0 $
+$$$
+N(t)=0
+$$$
 
 With the forward channel cleared, the C2P-ARQ self-healing path can complete. The transmitter’s `HelloPacket` session request is now delivered with sufficient structural integrity for the receiver to admit it, establishing a fresh cryptographic session. Normal data transmission resumes immediately thereafter.
 
@@ -1861,7 +2071,9 @@ This observation captures the central architectural separation in SH2SC-EDT: the
 
 The physical-layer clearance is demonstrated directly by the oscilloscope in .ref {recovery-success-oscilloscope}. Under the XOR injection model, the receiver-side waveform becomes
 
-$ S_{rx}(t) = S_{tx}(t) \oplus 0 = S_{tx}(t) $
+$$$
+S_{rx}(t) = S_{tx}(t) \oplus 0 = S_{tx}(t)
+$$$
 
 so the forward channel is electrically transparent in the absence of attacker disturbance.
 
@@ -1889,7 +2101,9 @@ The successful self-healing recovery after jamming cessation is summarized in .r
 
 In this final scenario, the application-layer payload transmission has completed in full. The Digital Noise Generator remains disabled, and the disturbance process remains quiescent,
 
-$ N(t)=0 $
+$$$
+N(t)=0
+$$$
 
 The system therefore transitions from steady-state encrypted data delivery into an explicit, authenticated session-termination path.
 
@@ -1911,7 +2125,9 @@ The receiver post-session LCD state is shown in .ref {receiver-post-session-clos
 
 The physical-layer quiescence of the post-session channel is captured by the oscilloscope in .ref {post-session-dead-channel-oscilloscope}. With no transmission activity and no attacker disturbance, the line satisfies
 
-$ S_{tx}(t) = 0, \qquad N(t) = 0, \qquad S_{rx}(t) = S_{tx}(t) \oplus N(t) = 0 $
+$$$
+S_{tx}(t) = 0, \qquad N(t) = 0, \qquad S_{rx}(t) = S_{tx}(t) \oplus N(t) = 0
+$$$
 
 so the receiver-side input collapses to a flatline consistent with a legitimate end of communication.
 
