@@ -1756,13 +1756,9 @@ On Node B, no corresponding transition is observed at this moment. The receiver 
 
 Oscilloscope and logic-analyzer figures are intentionally omitted for this scenario because the physical channel conditions remain identical to Scenario 4: the XOR noise injector continues to perturb the forward UART line in the same manner. The focus here is strictly the upper-layer timeout and state-machine response on the transmitter.
 
-The transmitter-side transition into session suspension and reconnection posture is shown in Figure 21.
+The transmitter-side transition into session suspension and reconnection posture is shown in .ref {tx-session-timeout-topology}.
 
-.center
-  ![Transmitter session timeout and reconnection transition under sustained jamming](img/fig_21_tx_session_timeout_topology.png)
-
-.center
-  *Figure 21: Node A enters the session-suspension safeguard after exhausting its retransmission budget. The LCD message `LINK LOST! RECONNECTING...` captures the moment the transmitter abandons the current session and transitions to reconnection logic under prolonged active jamming.*
+![Transmitter session timeout and reconnection transition under sustained jamming](img/fig_21_tx_session_timeout_topology.png "Node A enters the session-suspension safeguard after exhausting its retransmission budget. The LCD message `LINK LOST! RECONNECTING...` captures the moment the transmitter abandons the current session and transitions to reconnection logic under prolonged active jamming.") {#tx-session-timeout-topology}
 
 ### Scenario 6: Mutual Session Teardown and Dead Air
 
@@ -1774,21 +1770,13 @@ On the transmitter (Node A), the state remains `RECONNECTING` as established in 
 
 Only an oscilloscope capture is included for this intermediate state. Because neither node is transmitting valid C2P-ARQ frames, a logic analyzer would merely decode a sequence of random toggles that lacks preamble acquisition, header structure, and any meaningful data-link context. The oscilloscope, by contrast, directly exposes the physical condition of the line and can therefore demonstrate that the channel is saturated by adversarial interference even when legitimate endpoints are quiescent.
 
-Figure 22 provides the global topology view of the dead-air condition. The key observation is that the attacker sub-circuit remains enabled while neither endpoint maintains an active cryptographic session: the transmitter is in reconnection posture, and the receiver has reset the session state after concluding that the link is no longer live.
+The .ref {dead-air-topology} provides the global topology view of the dead-air condition. The key observation is that the attacker sub-circuit remains enabled while neither endpoint maintains an active cryptographic session: the transmitter is in reconnection posture, and the receiver has reset the session state after concluding that the link is no longer live.
 
-.center
-  ![Dead-air topology under mutual session teardown](img/fig_22_dead_air_topology.png)
+![Dead-air topology under mutual session teardown](img/fig_22_dead_air_topology.png "Dead-air topology under active jamming after mutual session teardown. The attacker remains enabled while Node A holds `RECONNECTING` posture and Node B has dropped the session after watchdog expiry.") {#dead-air-topology}
 
-.center
-  *Figure 22: Dead-air topology under active jamming after mutual session teardown. The attacker remains enabled while Node A holds `RECONNECTING` posture and Node B has dropped the session after watchdog expiry.*
+The .ref {dead-air-rx-timeout-status} captures the receiver-side evidence of graceful teardown. The LCD message `TIMEOUT! DROP / Session reset` demonstrates that Node B’s fail-safe mechanism has actively discarded the stale session context and cleared its cryptographic state, preventing indefinite retention of a compromised or unreachable session under prolonged jamming.
 
-Figure 23 captures the receiver-side evidence of graceful teardown. The LCD message `TIMEOUT! DROP / Session reset` demonstrates that Node B’s fail-safe mechanism has actively discarded the stale session context and cleared its cryptographic state, preventing indefinite retention of a compromised or unreachable session under prolonged jamming.
-
-.center
-  ![Receiver timeout status after session drop](img/fig_23_dead_air_rx_status.png)
-
-.center
-  *Figure 23: Node B indicates watchdog-driven session teardown. The LCD message `TIMEOUT! DROP / Session reset` confirms that the receiver has cleared the abandoned session and returned to a safe listening posture under continued channel denial.*
+![Receiver timeout status after session drop](img/fig_23_dead_air_rx_status.png "Node B indicates watchdog-driven session teardown. The LCD message `TIMEOUT! DROP / Session reset` confirms that the receiver has cleared the abandoned session and returned to a safe listening posture under continued channel denial.") {#dead-air-rx-timeout-status}
 
 The physics of this dead-air channel is captured by the XOR injection model under an idle transmitter. If the transmitter output is quiescent and held at a constant logic level,
 
@@ -1798,13 +1786,9 @@ then the receiver-side line becomes
 
 $ S_{rx}(t) = Const \oplus N(t) $
 
-where $ N(t) $ is the attacker disturbance process delivered by the Digital Noise Generator. Because $ Const $ carries no information-bearing transitions, any observed edge activity at the receiver input is attributable solely to $ N(t) $. Figure 24 confirms this condition visually: the oscilloscope trace is dominated by continuous interference, demonstrating that the physical medium is filled exclusively with adversarial energy during this interstitial state.
+where $ N(t) $ is the attacker disturbance process delivered by the Digital Noise Generator. Because $ Const $ carries no information-bearing transitions, any observed edge activity at the receiver input is attributable solely to $ N(t) $. The .ref {dead-air-noise-oscilloscope} confirms this condition visually: the oscilloscope trace is dominated by continuous interference, demonstrating that the physical medium is filled exclusively with adversarial energy during this interstitial state.
 
-.center
-  ![Oscilloscope capture of the noise-saturated idle channel](img/fig_24_dead_air_noise_oscilloscope.png)
-
-.center
-  *Figure 24: Oscilloscope evidence of dead air dominated by the attacker. With the transmitter held at a constant idle level, the XOR injector passes the disturbance process to the receiver input, yielding a channel waveform whose transitions are exclusively noise-driven.*
+![Oscilloscope capture of the noise-saturated idle channel](img/fig_24_dead_air_noise_oscilloscope.png "Oscilloscope evidence of dead air dominated by the attacker. With the transmitter held at a constant idle level, the XOR injector passes the disturbance process to the receiver input, yielding a channel waveform whose transitions are exclusively noise-driven.") {#dead-air-noise-oscilloscope}
 
 ### Scenario 7: Session Re-initialization Attempts Under Active Jamming
 
