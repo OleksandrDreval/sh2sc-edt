@@ -1702,15 +1702,12 @@ $ N(t) \neq 0 $
 
 and the receiver input becomes an XOR-composed waveform rather than a direct representation of the transmitter line. The experiment exposes a critical failure mode in embedded communication under interference: the transmitter and receiver can enter divergent operational states even when both endpoints continue executing correctly according to their local logic.
 
-Figure 16 captures the global topology during this attack interval. Node A has advanced to packet (#145) and is observed in a `WAIT ACK` state with two retries already consumed (`RTY: 2`). Node B, however, is still executing the previously authenticated payload corresponding to packet (#144), indicated by `PLAYING SEQ:144 OK`. This simultaneous observation establishes state desynchronization: the transmitter is attempting to deliver the next stop-and-wait DATA frame, while the receiver remains engaged in application-layer execution of the prior command.
+The .ref {jammed-data-desync-topology} captures the global topology during this attack interval. Node A has advanced to packet (#145) and is observed in a `WAIT ACK` state with two retries already consumed (`RTY: 2`). Node B, however, is still executing the previously authenticated payload corresponding to packet (#144), indicated by `PLAYING SEQ:144 OK`. This simultaneous observation establishes state desynchronization: the transmitter is attempting to deliver the next stop-and-wait DATA frame, while the receiver remains engaged in application-layer execution of the prior command.
 
 .center
-  ![Topology under active jamming during payload delivery](img/fig_16_jammed_data_desync_topology.png)
+  ![Topology under active jamming during payload delivery](img/fig_16_jammed_data_desync_topology.png "SH2SC-EDT topology under active jamming during payload delivery. Node A is stalled in `WAIT ACK` for `PKT:145` with `RTY:2`, while Node B is still in `PLAYING` state for `SEQ:144 OK`, evidencing protocol-state divergence under interference.") {#jammed-data-desync-topology}
 
-.center
-  *Figure 16: SH2SC-EDT topology under active jamming during payload delivery. Node A is stalled in `WAIT ACK` for `PKT:145` with `RTY:2`, while Node B is still in `PLAYING` state for `SEQ:144 OK`, evidencing protocol-state divergence under interference.*
-
-The physical-layer mechanism driving this divergence is shown in Figure 17. With the attacker enabled, the receiver-side waveform satisfies
+The physical-layer mechanism driving this divergence is shown in .ref {jammed-data-desync-oscilloscope}. With the attacker enabled, the receiver-side waveform satisfies
 
 $ S_{\text{rx}}(t) = S_{\text{tx}}(t) \oplus N(t) $
 
@@ -1721,36 +1718,22 @@ $ N(t)=1 $
 produces a polarity inversion of the instantaneous UART level. The oscilloscope trace exhibits a severely perturbed serial signal relative to the clean baseline: transitions occur within symbol windows that would otherwise remain stable, and the bit-level structure required for reliable asynchronous reconstruction is repeatedly violated. Under these conditions, correctly receiving a full preamble, header, ciphertext, and MAC as a single coherent frame becomes unlikely even if the receiver were exclusively dedicated to parsing.
 
 .center
-  ![Oscilloscope capture of active-jamming corruption during DATA delivery](img/fig_17_jammed_data_desync_oscilloscope.png)
+  ![Oscilloscope capture of active-jamming corruption during DATA delivery](img/fig_17_jammed_data_desync_oscilloscope.png "Oscilloscope evidence of physical-layer corruption under active jamming. XOR-injected disturbance introduces bit-level inversions into the forward UART waveform during DATA transmission.") {#jammed-data-desync-oscilloscope}
+
+The protocol-layer manifestation is captured by the logic analyzer in .ref {jammed-data-desync-logic-analyzer}. In contrast to the clean baselines (.ref {clean-data-logic-analyzer} and .ref {next-clean-data-logic-analyzer}), the jammed trace does not exhibit a stable, interpretable packet body following a consistent preamble. Instead, the captured high/low sequence is dominated by non-semantic transitions that erase the structural invariants required for framing and authenticated processing. This observation provides the key security-relevant conclusion of the scenario: the failure is not an AEAD authentication rejection of an otherwise well-formed ciphertext, but a prior destruction of packet integrity at the data-link boundary such that a valid frame may never be presented to the cryptographic verification stage.
 
 .center
-  *Figure 17: Oscilloscope evidence of physical-layer corruption under active jamming. XOR-injected disturbance introduces bit-level inversions into the forward UART waveform during DATA transmission.*
+  ![Logic analyzer capture of jammed, structurally destroyed DATA traffic](img/fig_18_jammed_data_desync_logic_analyzer.png "Logic-analyzer view of the jammed forward channel. The packet’s structural integrity is destroyed relative to the clean baseline, preventing stable framing and end-to-end validation.") {#jammed-data-desync-logic-analyzer}
 
-The protocol-layer manifestation is captured by the logic analyzer in Figure 18. In contrast to the clean baselines (Figures 12 and 15), the jammed trace does not exhibit a stable, interpretable packet body following a consistent preamble. Instead, the captured high/low sequence is dominated by non-semantic transitions that erase the structural invariants required for framing and authenticated processing. This observation provides the key security-relevant conclusion of the scenario: the failure is not an AEAD authentication rejection of an otherwise well-formed ciphertext, but a prior destruction of packet integrity at the data-link boundary such that a valid frame may never be presented to the cryptographic verification stage.
+The ARQ and application-layer consequences are visible directly on the node displays. .ref {jammed-data-tx-lcd-state} shows Node A stalled on `PKT:145` with `RTY:2` in `WAIT ACK`, confirming that the stop-and-wait retransmission logic is actively attempting to push the same payload packet through a disturbed channel without receiving the required acknowledgement. .ref {jammed-data-rx-lcd-state} shows Node B in `PLAYING` state with `SEQ:144 OK`, confirming that the receiver remains occupied with the prior authenticated command and has not progressed to the subsequent sequence value. Even if Node B were to complete its ongoing execution and resume active listening, the physical and logic-analyzer evidence (.ref {jammed-data-desync-oscilloscope} and .ref {jammed-data-desync-logic-analyzer}) indicates that the incoming attempts for packet (#145) are being shredded at the waveform level during this interval.
 
-.center
-  ![Logic analyzer capture of jammed, structurally destroyed DATA traffic](img/fig_18_jammed_data_desync_logic_analyzer.png)
+![Transmitter LCD state under jamming: PKT 145 with retries](img/fig_19_jammed_data_desync_tx_status.png "Node A status under active jamming. `PKT:145` and `RTY:2` in `WAIT ACK` indicate repeated retransmission attempts without acknowledgement.") {#jammed-data-tx-lcd-state}
 
-.center
-  *Figure 18: Logic-analyzer view of the jammed forward channel. The packet’s structural integrity is destroyed relative to the clean baseline, preventing stable framing and end-to-end validation.*
+![Receiver LCD state under desynchronization: still executing SEQ 144](img/fig_20_jammed_data_desync_rx_status.png "Node B status during the same interval. `PLAYING SEQ:144 OK` indicates ongoing execution of the previous authenticated payload while the transmitter has already advanced to the next packet.") {#jammed-data-rx-lcd-state}
 
-The ARQ and application-layer consequences are visible directly on the node displays. Figure 19 shows Node A stalled on `PKT:145` with `RTY:2` in `WAIT ACK`, confirming that the stop-and-wait retransmission logic is actively attempting to push the same payload packet through a disturbed channel without receiving the required acknowledgement. Figure 20 shows Node B in `PLAYING` state with `SEQ:144 OK`, confirming that the receiver remains occupied with the prior authenticated command and has not progressed to the subsequent sequence value. Even if Node B were to complete its ongoing execution and resume active listening, the physical and logic-analyzer evidence (Figures 17 and 18) indicates that the incoming attempts for packet (#145) are being shredded at the waveform level during this interval.
+The resulting interaction is summarized in .ref {jammed-data-desync-sequence}. While Node B remains in a prolonged execution window for packet (#144), Node A transmits packet (#145) and enters a `WAIT ACK` state. Each jammed transmission attempt fails to yield a valid acknowledgement, leading to sequential retries.
 
-.center
-  ![Transmitter LCD state under jamming: PKT 145 with retries](img/fig_19_jammed_data_desync_tx_status.png)
-
-.center
-  *Figure 19: Node A status under active jamming. `PKT:145` and `RTY:2` in `WAIT ACK` indicate repeated retransmission attempts without acknowledgement.*
-
-.center
-  ![Receiver LCD state under desynchronization: still executing SEQ 144](img/fig_20_jammed_data_desync_rx_status.png)
-
-.center
-  *Figure 20: Node B status during the same interval. `PLAYING SEQ:144 OK` indicates ongoing execution of the previous authenticated payload while the transmitter has already advanced to the next packet.*
-
-The resulting interaction is summarized in Diagram 19. While Node B remains in a prolonged execution window for packet (#144), Node A transmits packet (#145) and enters a `WAIT ACK` state. Each jammed transmission attempt fails to yield a valid acknowledgement, leading to sequential retries.
-
-.mermaid
+.mermaid ref:{jammed-data-desync-sequence} caption:{Desynchronization under active jamming. Node B remains occupied with PKT 144 while jammed transmissions of PKT 145 fail to produce an ACK, forcing repeated retries from Node A.}
   sequenceDiagram
     participant A as Node A (TX)
     participant B as Node B (RX)
@@ -1762,9 +1745,6 @@ The resulting interaction is summarized in Diagram 19. While Node B remains in a
     Note over A: ACK timeout
     A-xB: Retry 2 (PKT 145)
     deactivate B
-
-.center
-  *Diagram 19: Desynchronization under active jamming. Node B remains occupied with PKT 144 while jammed transmissions of PKT 145 fail to produce an ACK, forcing repeated retries from Node A.*
 
 ### Scenario 5: Transmitter Timeout and Session Suspension
 
