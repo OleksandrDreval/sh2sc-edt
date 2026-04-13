@@ -1844,53 +1844,38 @@ $ N(t)=0 $
 
 With the forward channel cleared, the C2P-ARQ self-healing path can complete. The transmitter’s `HelloPacket` session request is now delivered with sufficient structural integrity for the receiver to admit it, establishing a fresh cryptographic session. Normal data transmission resumes immediately thereafter.
 
-Figure 29 provides the topology overview at the moment recovery is achieved. The jammer is disabled, and the system returns to normal operation, with both endpoints actively participating in the transport-layer exchange.
+The topology overview at the moment recovery is achieved is shown in .ref {recovery-success-topology}. The jammer is disabled, and the system returns to normal operation, with both endpoints actively participating in the transport-layer exchange.
 
 .center
-  ![Topology of successful recovery with the jammer disabled](img/fig_29_recovery_success_topology.png)
+  ![Topology of successful recovery with the jammer disabled](img/fig_29_recovery_success_topology.png "Recovery success topology. With the Digital Noise Generator deactivated, the forward channel is clear and SH2SC-EDT resumes normal C2P-ARQ operation.") {#recovery-success-topology}
+
+The endpoint LCDs in .ref {recovery-success-tx-status} and .ref {recovery-success-rx-status} confirm that end-to-end synchronization has been restored under the newly established session. Node A reports that it is processing the 19th packet of the new session (`PKT: 19 WAIT NOTE`), while Node B confirms authenticated progress to the same point (`PLAYING SEQ: 19 OK`). This alignment indicates that both the handshake and the subsequent DATA stream are being decoded and acknowledged consistently.
 
 .center
-  *Figure 29: Recovery success topology. With the Digital Noise Generator deactivated, the forward channel is clear and SH2SC-EDT resumes normal C2P-ARQ operation.*
-
-The endpoint LCDs in Figures 30 and 31 confirm that end-to-end synchronization has been restored under the newly established session. Node A reports that it is processing the 19th packet of the new session (`PKT: 19 WAIT NOTE`), while Node B confirms authenticated progress to the same point (`PLAYING SEQ: 19 OK`). This alignment indicates that both the handshake and the subsequent DATA stream are being decoded and acknowledged consistently.
+  ![Transmitter status after recovery: PKT 19 in normal operation](img/fig_30_recovery_success_tx_status.png "Node A status after successful recovery. `PKT: 19` indicates forward progress within the new session, and `WAIT NOTE` indicates normal inter-packet pacing has resumed.") {#recovery-success-tx-status}
 
 .center
-  ![Transmitter status after recovery: PKT 19 in normal operation](img/fig_30_recovery_success_tx_status.png)
-
-.center
-  *Figure 30: Node A status after successful recovery. `PKT: 19` indicates forward progress within the new session, and `WAIT NOTE` indicates normal inter-packet pacing has resumed.*
-
-.center
-  ![Receiver status after recovery: PLAYING SEQ 19 OK](img/fig_31_recovery_success_rx_status.png)
-
-.center
-  *Figure 31: Node B status after successful recovery. `PLAYING SEQ: 19 OK` confirms authenticated reception and application-layer execution at the synchronized sequence position.*
+  ![Receiver status after recovery: PLAYING SEQ 19 OK](img/fig_31_recovery_success_rx_status.png "Node B status after successful recovery. `PLAYING SEQ: 19 OK` confirms authenticated reception and application-layer execution at the synchronized sequence position.") {#recovery-success-rx-status}
 
 This observation captures the central architectural separation in SH2SC-EDT: the Link/Session Layer is deliberately ephemeral and may be re-initialized, while the Application Layer payload stream is stateful and persistent. Because a new cryptographic session is established, the packet sequence numbers are re-started from zero to preserve nonce integrity for ChaCha20-Poly1305 under the fresh session context. However, the application payload state does not reset: the melody execution resumes from the exact note at which the prior session was severed, ensuring zero data loss despite the prolonged outage.
 
-The physical-layer clearance is demonstrated directly by the oscilloscope in Figure 32. Under the XOR injection model, the receiver-side waveform becomes
+The physical-layer clearance is demonstrated directly by the oscilloscope in .ref {recovery-success-oscilloscope}. Under the XOR injection model, the receiver-side waveform becomes
 
 $ S_{rx}(t) = S_{tx}(t) \oplus 0 = S_{tx}(t) $
 
 so the forward channel is electrically transparent in the absence of attacker disturbance.
 
 .center
-  ![Oscilloscope capture proving the clear channel after jamming ceases](img/fig_32_recovery_success_oscilloscope.png)
+  ![Oscilloscope capture proving the clear channel after jamming ceases](img/fig_32_recovery_success_oscilloscope.png "Oscilloscope evidence of recovery. With $ N(t)=0 $, the XOR stage passes the transmitter UART waveform without inversion, confirming that the medium is free of adversarial interference.") {#recovery-success-oscilloscope}
+
+At the protocol layer, .ref {recovery-success-logic-analyzer} shows a clean, uninterrupted data frame consistent with successful framing and decoding. In contrast to the jammed traces of Scenarios 4 and 7, the captured stream preserves stable structure across the entire frame, confirming that recovery is not merely a local FSM transition but an end-to-end restoration of the transport exchange.
 
 .center
-  *Figure 32: Oscilloscope evidence of recovery. With $ N(t)=0 $, the XOR stage passes the transmitter UART waveform without inversion, confirming that the medium is free of adversarial interference.*
+  ![Logic analyzer capture of a clean frame after recovery](img/fig_33_recovery_success_logic_analyzer.png "Logic-analyzer confirmation of successful protocol-level recovery. The data frame is captured without interruption, consistent with a clear channel and correct C2P-ARQ decoding.") {#recovery-success-logic-analyzer}
 
-At the protocol layer, the logic analyzer in Figure 33 shows a clean, uninterrupted data frame consistent with successful framing and decoding. In contrast to the jammed traces of Scenarios 4 and 7, the captured stream preserves stable structure across the entire frame, confirming that recovery is not merely a local FSM transition but an end-to-end restoration of the transport exchange.
+The successful self-healing recovery after jamming cessation is summarized in .ref {recovery-after-jamming-cessation}. A new session is established, and payload execution resumes from the preserved application state.
 
-.center
-  ![Logic analyzer capture of a clean frame after recovery](img/fig_33_recovery_success_logic_analyzer.png)
-
-.center
-  *Figure 33: Logic-analyzer confirmation of successful protocol-level recovery. The data frame is captured without interruption, consistent with a clear channel and correct C2P-ARQ decoding.*
-
-The successful recovery sequence is summarized in Diagram 21. A new session is opened via `HelloPacket`, acknowledged by the receiver, and the subsequent DATA packet resumes the application payload stream under the fresh cryptographic context.
-
-.mermaid
+.mermaid ref:{recovery-after-jamming-cessation} caption:{Successful self-healing recovery after jamming cessation. A new session is established, and payload execution resumes from the preserved application state.}
   sequenceDiagram
     participant A as Node A (TX)
     participant B as Node B (RX)
@@ -1899,9 +1884,6 @@ The successful recovery sequence is summarized in Diagram 21. A new session is o
     A->>B: Data Packet (Resuming Payload)
     Note right of B: Receive -> decrypt -> execute
     B-->>A: ACK
-
-.center
-  *Diagram 21: Successful self-healing recovery after jamming cessation. A new session is established, and payload execution resumes from the preserved application state.*
 
 ### Scenario 9: Legitimate Session Termination and Traffic Analysis Evasion
 
