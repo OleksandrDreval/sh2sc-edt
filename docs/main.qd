@@ -1627,30 +1627,18 @@ $ N(t)=1 $
 
 the instantaneous UART level is inverted; therefore, even transient high intervals in $ N(t) $ can invalidate the start/data/stop structure of asynchronous serial symbols before any protocol-layer validation is reached.
 
-Figure 7 shows the complete bench during the boot phase under attack. The transmitter has not obtained a valid acknowledgement path for session opening, and the receiver remains synchronization-bound. This global view confirms that the experiment starts in the strongest adversarial condition: there is no clean-channel warm-up interval preceding protocol activity.
+.ref {boot-time-topology-under-active-jamming} shows the complete bench during the boot phase under attack. The transmitter has not obtained a valid acknowledgement path for session opening, and the receiver remains synchronization-bound. This global view confirms that the experiment starts in the strongest adversarial condition: there is no clean-channel warm-up interval preceding protocol activity.
 
-.center
-  ![Boot-time topology under active jamming in SimulIDE](img/fig_07_boot_topology_overview.png)
+![Boot-time topology under active jamming in SimulIDE](img/fig_07_boot_topology_overview.png "Full SH2SC-EDT boot-time topology under active jamming. The attacker sub-circuit is enabled from startup, and both endpoints begin operation with a disturbed forward channel.") {#boot-time-topology-under-active-jamming}
 
-.center
-  *Figure 7: Full SH2SC-EDT boot-time topology under active jamming. The attacker sub-circuit is enabled from startup, and both endpoints begin operation with a disturbed forward channel.*
+.ref {oscilloscope-capture-of-boot-time-jamming} provides the physical-layer evidence. The oscilloscope trace shows persistent disturbance energy on the monitored line, with occasional transmitter-driven assertions embedded in the same interval. The key observation is not mere amplitude variation but temporal contamination: symbol windows that should remain electrically stable over UART bit periods are repeatedly crossed by interference events, making clean byte reconstruction statistically implausible at startup.
 
+![Oscilloscope capture of boot-time jamming](img/fig_08_boot_jamming_oscilloscope.png "Oscilloscope evidence of continuous interference at boot. The disturbed line remains dominated by attacker-driven activity while legitimate transmitter assertions are intermittently superposed.") {#oscilloscope-capture-of-boot-time-jamming}
 
-Figure 8 provides the physical-layer evidence. The oscilloscope trace shows persistent disturbance energy on the monitored line, with occasional transmitter-driven assertions embedded in the same interval. The key observation is not mere amplitude variation but temporal contamination: symbol windows that should remain electrically stable over UART bit periods are repeatedly crossed by interference events, making clean byte reconstruction statistically implausible at startup.
+.ref {logic-analyzer-capture-of-boot-time-jamming} provides the corresponding protocol-side consequence. The logic analyzer interprets the disturbed waveform as rapid, non-semantic transitions that do not stabilize into a valid frame grammar. As a result, the receiver cannot lock on the preamble gate (`0xAA 0x55`), and the parser cannot enter a sustained payload acquisition path. The combined evidence of .ref {oscilloscope-capture-of-boot-time-jamming} and .ref {logic-analyzer-capture-of-boot-time-jamming} demonstrates a strict physical-to-protocol causality: voltage-level inversions induced by active jamming are sufficient to prevent session bootstrap at the data-link boundary.
 
-.center
-  ![Oscilloscope capture of boot-time jamming](img/fig_08_boot_jamming_oscilloscope.png)
+![Logic analyzer capture of boot-time jamming](img/fig_09_boot_jamming_logic_analyzer.png "Logic-analyzer view of the same boot interval. Rapid non-semantic state transitions dominate the captured stream, preventing reliable preamble acquisition and packet framing.") {#logic-analyzer-capture-of-boot-time-jamming}
 
-.center
-  *Figure 8: Oscilloscope evidence of continuous interference at boot. The disturbed line remains dominated by attacker-driven activity while legitimate transmitter assertions are intermittently superposed.*
-
-Figure 9 provides the corresponding protocol-side consequence. The logic analyzer interprets the disturbed waveform as rapid, non-semantic transitions that do not stabilize into a valid frame grammar. As a result, the receiver cannot lock on the preamble gate (`0xAA 0x55`), and the parser cannot enter a sustained payload acquisition path. The combined evidence of Figures 8 and 9 demonstrates a strict physical-to-protocol causality: voltage-level inversions induced by active jamming are sufficient to prevent session bootstrap at the data-link boundary.
-
-.center
-  ![Logic analyzer capture of boot-time jamming](img/fig_09_boot_jamming_logic_analyzer.png)
-
-.center
-  *Figure 9: Logic-analyzer view of the same boot interval. Rapid non-semantic state transitions dominate the captured stream, preventing reliable preamble acquisition and packet framing.*
 
 ### Scenario 2: Baseline Payload Transmission (Clear Channel)
 
@@ -1660,31 +1648,23 @@ $ N(t)=0 $
 
 The purpose of this scenario is to establish a baseline of how a legitimate, encrypted C2P-ARQ DATA delivery manifests at both the physical layer and the protocol layer when the channel is clean and the endpoints are already synchronized.
 
-In the baseline state, Node A (TX) transmits an encrypted data packet containing an application payload, and Node B (RX) receives it successfully, performs authenticated decryption, executes the decoded command, and responds with an acknowledgement. Figure 10 captures the global topology of this condition.
+In the baseline state, Node A (TX) transmits an encrypted data packet containing an application payload, and Node B (RX) receives it successfully, performs authenticated decryption, executes the decoded command, and responds with an acknowledgement. .ref {baseline-payload-transmission-topology} captures the global topology of this condition.
 
-.center
-  ![Clear-channel topology with the attacker switch open](img/fig_10_clean_data_topology.png)
-
-.center
-  *Figure 10: SH2SC-EDT topology during baseline payload transmission. The attacker switch is open, the noise path is electrically disabled, and Node A and Node B communicate without interference.*
+![Clear-channel topology with the attacker switch open](img/fig_10_clean_data_topology.png "SH2SC-EDT topology during baseline payload transmission. The attacker switch is open, the noise path is electrically disabled, and Node A and Node B communicate without interference.") {#baseline-payload-transmission-topology}
 
 The topology view makes the clean-channel assumption explicit. With the switch open, the injected-noise input to the XOR stage is held low; the forward UART conductor therefore carries the transmitter waveform without attacker-induced inversions. This isolates protocol behavior from physical-layer corruption and provides a reference trace against which subsequent attack-enabled scenarios can be compared.
 
-The physical-layer manifestation of this baseline is shown by the oscilloscope capture in Figure 11. Under the XOR injection model used throughout this section, the received waveform is
+The physical-layer manifestation of this baseline is shown by the oscilloscope capture in .ref {baseline-clean-data-oscilloscope}. Under the XOR injection model used throughout this section, the received waveform is
 
 $ S_{\text{rx}}(t) = S_{\text{tx}}(t) \oplus N(t) = S_{\text{tx}}(t) \oplus 0 = S_{\text{tx}}(t) $
 
 so the channel is electrically transparent. The oscilloscope trace exhibits clean, sharp square-wave transitions between 0 V and 5 V, and stable symbol intervals with no bit-level polarity inversions superposed onto the UART stream.
 
-.center
-  ![Oscilloscope capture of a clean DATA transmission](img/fig_11_clean_data_oscilloscope.png)
+![Oscilloscope capture of a clean DATA transmission](img/fig_11_clean_data_oscilloscope.png "Oscilloscope evidence of baseline operation with $ N(t)=0 $. The XOR injector passes the UART signal unchanged, producing a clean square-wave waveform without attacker-driven inversions.") {#baseline-clean-data-oscilloscope}
 
-.center
-  *Figure 11: Oscilloscope evidence of baseline operation with $ N(t)=0 $. The XOR injector passes the UART signal unchanged, producing a clean square-wave waveform without attacker-driven inversions.*
+At the protocol layer, this physical cleanliness corresponds to a successful framed exchange: Node A emits a complete DATA packet, and Node B responds with an ACK after receiving and executing the decrypted payload. The message flow is summarized in .ref {clean-data-ack-exchange}.
 
-At the protocol layer, this physical cleanliness corresponds to a successful framed exchange: Node A emits a complete DATA packet, and Node B responds with an ACK after receiving and executing the decrypted payload. The message flow is summarized in Diagram 18.
-
-.mermaid
+.mermaid ref:{clean-data-ack-exchange} caption:{Successful C2P-ARQ DATA-to-ACK exchange in a clean channel. The receiver acknowledges only after it has received and executed the authenticated decrypted payload.}
   sequenceDiagram
     participant A as Node A (TX)
     participant B as Node B (RX)
@@ -1692,44 +1672,25 @@ At the protocol layer, this physical cleanliness corresponds to a successful fra
     Note right of B: Receive -> decrypt -> execute
     B-->>A: ACK
 
-.center
-  *Diagram 18: Successful C2P-ARQ DATA-to-ACK exchange in a clean channel. The receiver acknowledges only after it has received and executed the authenticated decrypted payload.*
+The .ref {clean-data-logic-analyzer} provides the corresponding logic-analyzer view. The analyzer captures a continuous, well-framed data transmission in which a static preamble is followed by the packet body containing an encrypted payload and its MAC tag. This trace establishes the visual baseline signature of a valid C2P-ARQ frame in the absence of jamming: stable preamble acquisition, uninterrupted byte flow across the packet body, and a coherent packet structure that can be parsed and validated end-to-end by the receiver.
 
-Figure 12 provides the corresponding logic-analyzer view. The analyzer captures a continuous, well-framed data transmission in which a static preamble is followed by the packet body containing an encrypted payload and its MAC tag. This trace establishes the visual baseline signature of a valid C2P-ARQ frame in the absence of jamming: stable preamble acquisition, uninterrupted byte flow across the packet body, and a coherent packet structure that can be parsed and validated end-to-end by the receiver.
-
-.center
-  ![Logic analyzer capture of a clean DATA packet](img/fig_12_clean_data_logic_analyzer.png)
-
-.center
-  *Figure 12: Logic-analyzer baseline of a valid C2P-ARQ data frame in a clear channel. A static preamble is followed by the encrypted payload and MAC tag, enabling seamless frame capture and validation.*
+![Logic analyzer capture of a clean DATA packet](img/fig_12_clean_data_logic_analyzer.png "Logic-analyzer baseline of a valid C2P-ARQ data frame in a clear channel. A static preamble is followed by the encrypted payload and MAC tag, enabling seamless frame capture and validation.") {#clean-data-logic-analyzer}
 
 ### Scenario 3: Cryptographic Variance in Subsequent Packets (Clean Channel)
 
 With the Digital Noise Generator still disabled, the transmitter proceeds to emit the next sequential DATA packet over the same clean forward channel. Node A and Node B remain synchronized, and the exchange completes successfully, confirming that any observed differences in the captured packet waveform are not attributable to physical-layer interference but to protocol-level cryptographic variance.
 
-Figure 13 provides the global topology for this second clean-channel delivery. The attacker switch remains open, and the node LCDs confirm forward progress to the subsequent packet: Node A reports an incremented packet index with zero retries (`PKT:2`, `RTY:0`) while Node B confirms authenticated reception (`SEQ:2 OK`) during payload execution.
+The .ref {next-clean-data-topology} provides the global topology for this second clean-channel delivery. The attacker switch remains open, and the node LCDs confirm forward progress to the subsequent packet: Node A reports an incremented packet index with zero retries (`PKT:2`, `RTY:0`) while Node B confirms authenticated reception (`SEQ:2 OK`) during payload execution.
 
-.center
-  ![Topology during the next clean DATA packet delivery](img/fig_13_clean_data_next_topology.png)
+![Topology during the next clean DATA packet delivery](img/fig_13_clean_data_next_topology.png "SH2SC-EDT topology during the next sequential clean-channel DATA delivery. The attacker remains disabled, and the LCD state confirms incremented packet progression with no retransmissions.") {#next-clean-data-topology}
 
-.center
-  *Figure 13: SH2SC-EDT topology during the next sequential clean-channel DATA delivery. The attacker remains disabled, and the LCD state confirms incremented packet progression with no retransmissions.*
+The physical-layer condition remains stable in .ref {next-clean-data-oscilloscope}. The oscilloscope capture shows a clean UART waveform consistent with the baseline in .ref {baseline-clean-data-oscilloscope}: sharp transitions and stable logic levels without disturbance-driven polarity inversions. This observation constrains the interpretation of subsequent protocol traces: the channel is electrically reliable, so any divergence in the data pattern observed at the logic analyzer must arise from the packet contents rather than from noise-induced corruption.
 
-The physical-layer condition remains stable in Figure 14. The oscilloscope capture shows a clean UART waveform consistent with the baseline in Figure 11: sharp transitions and stable logic levels without disturbance-driven polarity inversions. This observation constrains the interpretation of subsequent protocol traces: the channel is electrically reliable, so any divergence in the data pattern observed at the logic analyzer must arise from the packet contents rather than from noise-induced corruption.
+![Oscilloscope capture of the next clean DATA transmission](img/fig_14_clean_data_next_oscilloscope.png "Oscilloscope evidence of continued clear-channel operation during the next DATA packet. The physical layer remains clean and stable, isolating packet-level differences to protocol behavior rather than interference.") {#next-clean-data-oscilloscope}
 
-.center
-  ![Oscilloscope capture of the next clean DATA transmission](img/fig_14_clean_data_next_oscilloscope.png)
+The cryptographic effect is exposed most clearly by the logic-analyzer capture in .ref {next-clean-data-logic-analyzer}. When compared directly against the prior clean-channel packet (.ref {clean-data-logic-analyzer}), the preamble remains visually identical, as expected: this synchronization pattern is intentionally static to support deterministic frame acquisition at the receiver. In contrast, the post-preamble region exhibits a markedly different high/low sequence with no visually apparent correlation to the previous packet’s payload/MAC segment.
 
-.center
-  *Figure 14: Oscilloscope evidence of continued clear-channel operation during the next DATA packet. The physical layer remains clean and stable, isolating packet-level differences to protocol behavior rather than interference.*
-
-The cryptographic effect is exposed most clearly by the logic-analyzer capture in Figure 15. When compared directly against the prior clean-channel packet (Figure 12), the preamble remains visually identical, as expected: this synchronization pattern is intentionally static to support deterministic frame acquisition at the receiver. In contrast, the post-preamble region exhibits a markedly different high/low sequence with no visually apparent correlation to the previous packet’s payload/MAC segment.
-
-.center
-  ![Logic analyzer capture of the next clean DATA packet](img/fig_15_clean_data_next_logic_analyzer.png)
-
-.center
-  *Figure 15: Logic-analyzer capture of the next sequential DATA frame under clear-channel conditions. The preamble matches the prior packet, while the ciphertext and MAC region exhibits no visible correlation, consistent with ChaCha20-Poly1305 semantic security under a nonce change.*
+![Logic analyzer capture of the next clean DATA packet](img/fig_15_clean_data_next_logic_analyzer.png "Logic-analyzer capture of the next sequential DATA frame under clear-channel conditions. The preamble matches the prior packet, while the ciphertext and MAC region exhibits no visible correlation, consistent with ChaCha20-Poly1305 semantic security under a nonce change.") {#next-clean-data-logic-analyzer}
 
 This lack of observable structure is the expected manifestation of semantic security at the data-link layer. Even if the underlying application command size is unchanged between adjacent packets, the protocol’s incremented sequence number induces a distinct per-packet nonce, yielding a new ChaCha20 keystream and, consequently, a different ciphertext for the encrypted payload. Because the Poly1305 tag is computed over the authenticated header and the ciphertext, the MAC bytes likewise change across packets. The resulting post-preamble waveform therefore behaves as a one-time, packet-unique pattern to an external observer, preventing reliable pattern matching across sequential transmissions and undermining any attempt at correlation-based traffic inference on the forward channel.
 
