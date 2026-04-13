@@ -1545,30 +1545,23 @@ Its passive capabilities are provided by SimulIDE instrumentation. Through the o
 
 Its active capability is physical channel interference: the adversary can seize the transmission line and inject disruptive signal activity that corrupts in-flight symbols and invalidates received frames. This model captures hardware-level jamming pressure on the UART link and provides the adversarial basis for evaluating protocol liveness and fault tolerance under prolonged disruption. The internal construction of the jamming instrument is intentionally deferred to Section 8.2.
 
-The Attacker sub-circuit used in the SH2SC-EDT testbed is shown in Figure 5.
+The Attacker sub-circuit used in the SH2SC-EDT testbed is shown in .ref {attacker-sub-circuit-overview-in-simulide}.
 
-.center
-  ![The Attacker sub-circuit overview in SimulIDE](img/fig_04_attacker_node_overview.png)
-
-.center
-  *Figure 5: The Attacker sub-circuit overview in SimulIDE, equipped with an oscilloscope and logic analyzer for passive monitoring, and a digital noise generator for active channel disruption.*
+![The Attacker sub-circuit overview in SimulIDE](img/fig_04_attacker_node_overview.png "The Attacker sub-circuit overview in SimulIDE, equipped with an oscilloscope and logic analyzer for passive monitoring, and a digital noise generator for active channel disruption.") {#attacker-sub-circuit-overview-in-simulide}
 
 ## Digital Noise Generator Architecture and XOR Injection
 
 The Digital Noise Generator is implemented in SimulIDE as a compact hardware logic chain whose sole purpose is to superimpose controlled binary interference onto the forward UART channel. Its topology consists of a 5 V manual enable path, a 2000 Hz pulse source, an AND gate that either permits or suppresses the disturbance stream, and an XOR gate that injects the resulting jamming waveform into the clean serial output of Node A before the signal reaches Node B.
 
-The logic-chain architecture of the Digital Noise Generator is illustrated in Diagram 17.
+The logic-chain architecture of the Digital Noise Generator is illustrated in .ref {digital-noise-generator-logic-chain}.
 
-.mermaid
+.mermaid ref:{digital-noise-generator-logic-chain} caption:{Logical flow of digital noise injection in the SH2SC-EDT SimulIDE testbed. A 2000 Hz pulse source is conditionally enabled by a manual 5 V switch through an AND gate and then injected into the clean UART stream through an XOR stage, yielding a corrupted serial signal at the receiver input.}
   graph LR
     PG["Pulse Generator\n(2 kHz)"] --> AND["AND Gate"]
     SW["Manual Switch\n(5 V)"] --> AND
     AND --> XOR["XOR Gate"]
     UARTA["Clean UART\n(from Node A)"] --> XOR
     XOR --> UARTB["Corrupted UART\n(to Node B)"]
-
-.center
-  *Diagram 17: Logical flow of digital noise injection in the SH2SC-EDT SimulIDE testbed. A 2000 Hz pulse source is conditionally enabled by a manual 5 V switch through an AND gate and then injected into the clean UART stream through an XOR stage, yielding a corrupted serial signal at the receiver input.*
 
 At the logic level, the AND stage operates as an enable gate. Let
 
@@ -1608,13 +1601,9 @@ $ T_{\text{jam}} = \frac{1}{2000} = 500\,\mu s $
 
 which is substantially shorter than the duration of a complete 10-bit UART character (approximately $ 1.04 \, ms $ including start and stop bits). Consequently, once the injector is enabled, polarity inversions occur on a sub-frame timescale and intersect multiple symbol intervals during a packet transmission. Any such inversion that strikes the authenticated header, ciphertext, or truncated Poly1305 tag changes the received bit pattern and causes the C2P-ARQ integrity check to fail deterministically. The Digital Noise Generator therefore serves as a physically grounded bit-flip instrument: it does not emulate packet loss at the software level, but instead corrupts the electrical representation of the frame in transit.
 
-The internal gate-level architecture of the Digital Noise Generator is shown in Figure 6.
+The internal gate-level architecture of the Digital Noise Generator is shown in .ref {digital-noise-generator-architecture-in-simulide}.
 
-.center
-  ![Internal architecture of the Digital Noise Generator in SimulIDE](img/fig_06_digital_noise_injector.png)
-
-.center
-  *Figure 6: Internal architecture of the Digital Noise Generator in SimulIDE. A 2000 Hz clock signal is gated by a manual switch via an AND gate, and injected into the UART data line via an XOR gate to induce deterministic bit-flips.*
+![Internal architecture of the Digital Noise Generator in SimulIDE](img/fig_06_digital_noise_injector.png "Internal architecture of the Digital Noise Generator in SimulIDE. A 2000 Hz clock signal is gated by a manual switch via an AND gate, and injected into the UART data line via an XOR gate to induce deterministic bit-flips.") {#digital-noise-generator-architecture-in-simulide}
 
 ## Simulation Results: Resilience Under Prolonged Jamming
 
