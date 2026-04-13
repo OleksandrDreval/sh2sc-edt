@@ -1895,55 +1895,35 @@ The system therefore transitions from steady-state encrypted data delivery into 
 
 Node A (TX) sends a final full-sized encrypted frame carrying the termination command (the `FINAL` flag) within the protected payload. After receiving the receiver’s acknowledgement, Node A exits the active transport lifecycle and enters its terminal `IDLE` state. Node B (RX) receives the final frame, performs authenticated decryption, identifies the termination condition, and closes the cryptographic session. In doing so, Node B also records the total number of executed payload chunks, thereby providing an explicit end-of-session audit point.
 
-Figure 34 provides the topology overview at the moment the session is closed. Unlike the jammed intervals earlier in this subsection, the system is at rest by design rather than by denial: the channel is quiet, and both endpoints have transitioned into terminal states consistent with a completed transmission.
+The .ref {final-session-closure-topology} provides the topology overview at the moment the session is closed. Unlike the jammed intervals earlier in this subsection, the system is at rest by design rather than by denial: the channel is quiet, and both endpoints have transitioned into terminal states consistent with a completed transmission.
 
-.center
-  ![Final topology overview after legitimate session closure](img/fig_34_session_closed_topology.png)
+![Final topology overview after legitimate session closure](img/fig_34_session_closed_topology.png "Final topology after legitimate session termination. The attacker remains disabled and both endpoints have transitioned into their post-session rest states.") {#final-session-closure-topology}
 
-.center
-  *Figure 34: Final topology after legitimate session termination. The attacker remains disabled and both endpoints have transitioned into their post-session rest states.*
+.ref {transmitter-post-session-idle-state} and .ref {receiver-post-session-closed-state} provide the endpoint-level termination evidence. Node A’s `PKT: 0 IDLE` indicates that the transmitter has ceased all session activity and is no longer emitting protocol frames. Node B’s `SESSION CLOSED SEQ: 275` confirms that the receiver recognized the termination command and closed the session in a controlled manner, while also exposing the total authenticated workload processed during the completed transmission.
 
-Figures 35 and 36 provide the endpoint-level termination evidence. Node A’s `PKT: 0 IDLE` indicates that the transmitter has ceased all session activity and is no longer emitting protocol frames. Node B’s `SESSION CLOSED SEQ: 275` confirms that the receiver recognized the termination command and closed the session in a controlled manner, while also exposing the total authenticated workload processed during the completed transmission.
+The transmitter post-session LCD state is shown in .ref {transmitter-post-session-idle-state}.
 
-Figure 35 shows the transmitter post-session LCD state.
+![Transmitter post-session status: IDLE](img/fig_35_session_closed_tx_status.png "Node A post-session state. `PKT: 0 IDLE` indicates that the transmitter has completed the final authenticated exchange and returned to its terminal idle posture.") {#transmitter-post-session-idle-state}
 
-.center
-  ![Transmitter post-session status: IDLE](img/fig_35_session_closed_tx_status.png)
+The receiver post-session LCD state is shown in .ref {receiver-post-session-closed-state}.
 
-.center
-  *Figure 35: Node A post-session state. `PKT: 0 IDLE` indicates that the transmitter has completed the final authenticated exchange and returned to its terminal idle posture.*
+![Receiver post-session status: SESSION CLOSED with total sequence count](img/fig_36_session_closed_rx_status.png "Node B post-session state. `SESSION CLOSED SEQ: 275` confirms legitimate termination and reports the total number of authenticated payload chunks executed during the session.") {#receiver-post-session-closed-state}
 
-Figure 36 shows the receiver post-session LCD state.
-
-.center
-  ![Receiver post-session status: SESSION CLOSED with total sequence count](img/fig_36_session_closed_rx_status.png)
-
-.center
-  *Figure 36: Node B post-session state. `SESSION CLOSED SEQ: 275` confirms legitimate termination and reports the total number of authenticated payload chunks executed during the session.*
-
-The physical-layer quiescence of the post-session channel is captured by the oscilloscope in Figure 37. With no transmission activity and no attacker disturbance, the line satisfies
+The physical-layer quiescence of the post-session channel is captured by the oscilloscope in .ref {post-session-dead-channel-oscilloscope}. With no transmission activity and no attacker disturbance, the line satisfies
 
 $ S_{tx}(t) = 0, \qquad N(t) = 0, \qquad S_{rx}(t) = S_{tx}(t) \oplus N(t) = 0 $
 
 so the receiver-side input collapses to a flatline consistent with a legitimate end of communication.
 
-.center
-  ![Oscilloscope flatline after session termination](img/fig_37_session_closed_oscilloscope.png)
+![Oscilloscope flatline after session termination](img/fig_37_session_closed_oscilloscope.png "Oscilloscope evidence of a dead channel after legitimate teardown. The flatline is consistent with $ S_{rx}(t)=0 $ under the no-transmission, no-noise condition.") {#post-session-dead-channel-oscilloscope}
 
-.center
-  *Figure 37: Oscilloscope evidence of a dead channel after legitimate teardown. The flatline is consistent with $ S_{rx}(t)=0 $ under the no-transmission, no-noise condition.*
+The protocol-side security property of this termination mechanism is exposed most clearly by the logic analyzer in .ref {final-terminating-frame-logic-analyzer}. The final packet is intentionally emitted as a full-sized frame that structurally mimics a standard encrypted data packet: it begins with the identical synchronization preamble, and its on-wire duration matches the normal data-frame footprint. This design eliminates a trivial traffic-analysis oracle based on packet-size heuristics: an eavesdropper observing only frame lengths cannot infer that a session has ended merely because a shorter terminating frame appears. Instead, the termination command is expressed inside the encrypted payload and is therefore visible only to an authenticated endpoint.
 
-The protocol-side security property of this termination mechanism is exposed most clearly by the logic analyzer in Figure 38. The final packet is intentionally emitted as a full-sized frame that structurally mimics a standard encrypted data packet: it begins with the identical synchronization preamble, and its on-wire duration matches the normal data-frame footprint. This design eliminates a trivial traffic-analysis oracle based on packet-size heuristics: an eavesdropper observing only frame lengths cannot infer that a session has ended merely because a shorter terminating frame appears. Instead, the termination command is expressed inside the encrypted payload and is therefore visible only to an authenticated endpoint.
+![Logic analyzer capture of the full-sized FINAL frame](img/fig_38_final_packet_logic_analyzer.png "Logic-analyzer capture of the final terminating frame. The frame is full-sized and preamble-identical to standard encrypted data traffic, supporting traffic-analysis evasion by suppressing termination inference from packet length.") {#final-terminating-frame-logic-analyzer}
 
-.center
-  ![Logic analyzer capture of the full-sized FINAL frame](img/fig_38_final_packet_logic_analyzer.png)
+The teardown exchange is summarized in .ref {legitimate-session-termination-sequence}. A terminating packet is transmitted and acknowledged as in any normal stop-and-wait data delivery, after which the transmitter enters `IDLE` and the receiver enters `SESSION CLOSED`.
 
-.center
-  *Figure 38: Logic-analyzer capture of the final terminating frame. The frame is full-sized and preamble-identical to standard encrypted data traffic, supporting traffic-analysis evasion by suppressing termination inference from packet length.*
-
-The teardown exchange is summarized in Diagram 22. A terminating packet is transmitted and acknowledged as in any normal stop-and-wait data delivery, after which the transmitter enters `IDLE` and the receiver enters `SESSION CLOSED`.
-
-.mermaid
+.mermaid ref:{legitimate-session-termination-sequence} caption:{Legitimate session termination. The FINAL command is conveyed inside a full-sized encrypted frame and acknowledged before both endpoints transition into their terminal post-session states.}
   sequenceDiagram
     participant A as Node A (TX)
     participant B as Node B (RX)
@@ -1952,9 +1932,6 @@ The teardown exchange is summarized in Diagram 22. A terminating packet is trans
     B-->>A: ACK
     Note over A: Transition to IDLE
     Note over B: Transition to SESSION CLOSED
-
-.center
-  *Diagram 22: Legitimate session termination. The FINAL command is conveyed inside a full-sized encrypted frame and acknowledged before both endpoints transition into their terminal post-session states.*
 
 # Conclusion and Future Work
 
