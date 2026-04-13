@@ -379,17 +379,14 @@ C2P-ARQ mandates ChaCha20-Poly1305 AEAD for every DATA and FIN frame without exc
 
 ### Strictly Non-Blocking Finite State Machines
 
-All transmitter and receiver logic is implemented as deterministic FSMs with no `delay()` calls in the main execution loop. Every FSM transition is conditioned on `millis()` delta comparisons, making RAM occupancy and CPU time per loop iteration statically bounded and predictable. The transmitter FSM defines nine explicit states covering the full session lifecycle — `IDLE`, `RECONNECTING`, `SENDING_HELLO`, `WAITING_HELLO_ACK`, `SENDING`, `WAITING_ACK`, `WAIT_BETWEEN_NOTES`, `SENDING_FIN`, and `WAITING_FIN_ACK` — while the receiver implements a four-state byte-level parser, as illustrated in Diagram 1, driven by each incoming UART byte. This design eliminates the class of concurrency bugs that arise from blocking I/O and guarantees deterministic behaviour under the real-time constraints of the SimulIDE simulation environment.
+All transmitter and receiver logic is implemented as deterministic FSMs with no `delay()` calls in the main execution loop. Every FSM transition is conditioned on `millis()` delta comparisons, making RAM occupancy and CPU time per loop iteration statically bounded and predictable. The transmitter FSM defines nine explicit states covering the full session lifecycle — `IDLE`, `RECONNECTING`, `SENDING_HELLO`, `WAITING_HELLO_ACK`, `SENDING`, `WAITING_ACK`, `WAIT_BETWEEN_NOTES`, `SENDING_FIN`, and `WAITING_FIN_ACK` — while the receiver implements a four-state byte-level parser, as shown in .ref {rx-parser-states}, driven by each incoming UART byte. This design eliminates the class of concurrency bugs that arise from blocking I/O and guarantees deterministic behaviour under the real-time constraints of the SimulIDE simulation environment.
 
-.mermaid
+.mermaid ref:{rx-parser-states} caption:{RX byte-level frame parser states (`processReceivedByte()`): each incoming UART byte advances the parser one step; `resetParser()` on MAC failure or timeout returns the parser to `WAIT_AA`.}
     graph LR
-        %% Diagram 1 — Section 1.3: RX byte-level parser states
+        %% RX byte-level parser states
         A[WAIT_AA] --> B[WAIT_55]
         B --> C[READ_TYPE]
         C --> D[READ_PAYLOAD]
-
-.center
-    *Diagram 1: RX byte-level frame parser states (`processReceivedByte()`): each incoming UART byte advances the parser one step; `resetParser()` on MAC failure or timeout returns the parser to `WAIT_AA`.*
 
 ### Self-Healing ARQ with Adaptive Watchdog
 
@@ -437,11 +434,11 @@ Blocking routines are a fundamental architectural incompatibility with transport
 
 C2P-ARQ resolves this constraint through exclusive reliance on non-blocking FSMs whose state transitions are conditioned on `millis()` delta comparisons. Each invocation of `loop()` executes at most one FSM transition, consumes a statically bounded number of instructions, and returns immediately — achieving a per-iteration latency measured in microseconds rather than milliseconds. Timeout conditions such as the ACK wait window (`ACK_TIMEOUT_MS = 50 ms`), the reconnection broadcast interval (`RECONNECT_INTERVAL_MS = 2000 ms`), the note playback duration, and the Smart Dynamic Watchdog limit are all implemented as comparisons of the form `(millis() - t_start) >= threshold`, evaluated once per loop iteration and advancing the FSM only when the condition holds. No thread synchronisation, no interrupt-driven state mutation, and no blocking I/O path exists anywhere in the protocol stack.
 
-This design provides temporal determinism as a first-class property: at any point during execution, the precise state of the system is encoded in a single enum value with no hidden implicit state. The transmitter FSM defines nine states — `IDLE`, `RECONNECTING`, `SENDING_HELLO`, `WAITING_HELLO_ACK`, `SENDING`, `WAITING_ACK`, `WAIT_BETWEEN_NOTES`, `SENDING_FIN`, and `WAITING_FIN_ACK` — covering the complete session lifecycle from quiescence through authenticated teardown. The receiver implements a four-state byte-level parser, illustrated in Diagram 2, that advances one byte at a time and resets atomically to `WAIT_AA` on any MAC failure or parser timeout, guaranteeing that frame boundary corruption cannot propagate into subsequent frames. Because all session-recovery logic — `suspendSession()`, nonce erasure, `melodyIndex` preservation — executes within well-defined state transitions, the Auto-Resume mechanism is free of race conditions and memory leaks by construction: the system may remain in `RECONNECTING` indefinitely under sustained jamming without accumulating unbounded resource consumption.
+This design provides temporal determinism as a first-class property: at any point during execution, the precise state of the system is encoded in a single enum value with no hidden implicit state. The transmitter FSM defines nine states — `IDLE`, `RECONNECTING`, `SENDING_HELLO`, `WAITING_HELLO_ACK`, `SENDING`, `WAITING_ACK`, `WAIT_BETWEEN_NOTES`, `SENDING_FIN`, and `WAITING_FIN_ACK` — covering the complete session lifecycle from quiescence through authenticated teardown. The receiver implements a four-state byte-level parser, as shown in .ref {rx-parser-recovery}, that advances one byte at a time and resets atomically to `WAIT_AA` on any MAC failure or parser timeout, guaranteeing that frame boundary corruption cannot propagate into subsequent frames. Because all session-recovery logic — `suspendSession()`, nonce erasure, `melodyIndex` preservation — executes within well-defined state transitions, the Auto-Resume mechanism is free of race conditions and memory leaks by construction: the system may remain in `RECONNECTING` indefinitely under sustained jamming without accumulating unbounded resource consumption.
 
-.mermaid
+.mermaid ref:{rx-parser-recovery} caption:{RX parser recovery path. The byte-level FSM advances through preamble admission and returns to `WAIT_AA` on MAC failure, parser timeout, or an explicit `resetParser()` call.}
   stateDiagram-v2
-    %% Diagram 2 — Section 2.3: RX parser recovery path after MAC fail or timeout
+    %% RX parser recovery path after MAC fail or timeout
     [*] --> WAIT_AA
     WAIT_AA --> WAIT_55: 0xAA
     WAIT_55 --> READ_TYPE: 0x55
@@ -449,41 +446,30 @@ This design provides temporal determinism as a first-class property: at any poin
     READ_PAYLOAD --> WAIT_AA: MAC fail or timeout
     READ_PAYLOAD --> WAIT_AA: resetParser()
 
-.center
-  *Diagram 2: RX parser recovery path. The byte-level FSM advances through preamble admission and returns to `WAIT_AA` on MAC failure, parser timeout, or an explicit `resetParser()` call.*
-
 # Hardware Architecture and Simulation Environment
 
 SH2SC-EDT was designed from inception to be validated within a fully reproducible simulation environment. Every physical component — the UART channel, the I2C bus, the piezo buzzer, the entropy ring oscillator, and the XOR noise injector — is modelled in SimulIDE, a real-time electronic circuit simulator, enabling rigorously repeatable fault-tolerance experiments without access to physical hardware. All timing constants, baud-rate settings, and MAC verification results presented in this paper were obtained directly from this simulation; no post-hoc calibration or parameter tuning was performed outside the simulation environment.
 
 ## The SimulIDE Testbed: Topology and Physical Layer Abstraction
 
-The SH2SC-EDT simulation topology comprises two microcontroller nodes and an Attacker sub-circuit, illustrated in Figure 1. Node A (Transmitter, "The Conductor") is an ATmega328P-based Arduino Nano responsible for the entire C2P-ARQ session lifecycle: it owns the `PROGMEM` melody table, maintains the authoritative `melodyIndex`, drives the nine-state transmitter FSM from `IDLE` through `WAITING_FIN_ACK`, and executes `suspendSession()` on link failure. Node B (Receiver, "The Synthesizer") is a second Arduino Nano that holds only the 21-entry universal note-frequency dictionary and the 12-byte session nonce; it is intentionally stateless with respect to melody progress. The Attacker is a hardware-only sub-circuit — it is not a microcontroller, not a third node, and not a firmware entity. It consists of an XOR gate, a 1 kHz Pulse Generator with 15% duty cycle, an AND gate, and a manual Switch, wired in series on the UART data line between Node A and Node B.
+The SH2SC-EDT simulation topology comprises two microcontroller nodes and an Attacker sub-circuit, as shown in .ref {full-simulation-topology-in-simulide}. Node A (Transmitter, "The Conductor") is an ATmega328P-based Arduino Nano responsible for the entire C2P-ARQ session lifecycle: it owns the `PROGMEM` melody table, maintains the authoritative `melodyIndex`, drives the nine-state transmitter FSM from `IDLE` through `WAITING_FIN_ACK`, and executes `suspendSession()` on link failure. Node B (Receiver, "The Synthesizer") is a second Arduino Nano that holds only the 21-entry universal note-frequency dictionary and the 12-byte session nonce; it is intentionally stateless with respect to melody progress. The Attacker is a hardware-only sub-circuit — it is not a microcontroller, not a third node, and not a firmware entity. It consists of an XOR gate, a 1 kHz Pulse Generator with 15% duty cycle, an AND gate, and a manual Switch, wired in series on the UART data line between Node A and Node B.
 
-.center
-    ![Full simulation topology in SimulIDE](img/fig_01_full_simulation_topology.png)
+![Full simulation topology in SimulIDE](img/fig_01_full_simulation_topology.png "Full simulation topology in SimulIDE. Node A (Transmitter) is connected to Node B (Receiver) over a UART bus routed through the Attacker XOR noise injector. The clean feedback channel, as shown in .ref {uart-feedback-channel}, bypasses the injector entirely.") {#full-simulation-topology-in-simulide}
 
-.center
-    *Figure 1: Full simulation topology in SimulIDE. Node A (Transmitter) is connected to Node B (Receiver) over a UART bus routed through the Attacker XOR noise injector. The clean feedback channel, as illustrated in Diagram 3, bypasses the injector entirely.*
+.mermaid ref:{uart-feedback-channel} caption:{UART feedback channel direction in the SH2SC-EDT testbed. Node B TX reaches Node A RX only through the clean, unattacked feedback wire carrying `ACK_BYTE` and `NACK_BYTE`.}
+  graph LR
+    A["Node B TX (Receiver)"] -->|"ACK / NACK only — clean, unattacked"| B["Node A RX (Transmitter)"]
 
-.mermaid
-    graph LR
-        %% Diagram 3 — Section 3.1: UART feedback channel direction
-        A["Node B TX (Receiver)"] -->|"ACK / NACK only — clean, unattacked"| B["Node A RX (Transmitter)"]
 
-.center
-    *Diagram 3: Direction of the C2P-ARQ feedback channel. Single-byte `ACK_BYTE` and `NACK_BYTE` frames travel from Node B back to Node A over a direct wire that bypasses the XOR noise injector.*
 
-SimulIDE provides no RF propagation model. The physical layer is accordingly abstracted as a point-to-point UART digital bus operating at 9600 bps (8N1). This abstraction is not a limitation but a deliberate design choice: by removing RF-layer complexity — multipath, frequency-selective fading, antenna gain patterns — the experiment isolates the protocol layer as the sole variable under test. The UART bus carries two unidirectional channels, illustrated in Diagram 4. The data channel, routed from Node A TX to Node B RX, passes through the Attacker XOR gate: with the noise Switch open, the XOR output equals the original signal; with the Switch closed, the Pulse Generator's 1 kHz rectangular waveform is XORed onto the bus, flipping individual UART bits and producing realistic partial-frame corruption. At 9600 bps, a single UART bit spans approximately 104 µs; a 150 µs noise pulse (15% of a 1000 µs period) is therefore wide enough to corrupt one to nine consecutive bits per burst without destroying every bit in every frame — producing the probabilistic packet-error distribution that the C2P-ARQ ARQ layer is designed to survive. The feedback channel, running from Node B TX to Node A RX, is a clean, unattacked direct wire. It carries only single-byte control frames: `ACK_BYTE = 0x06` on successful Poly1305 verification, and `NACK_BYTE = 0x15` on MAC failure.
+SimulIDE provides no RF propagation model. The physical layer is accordingly abstracted as a point-to-point UART digital bus operating at 9600 bps (8N1). This abstraction is not a limitation but a deliberate design choice: by removing RF-layer complexity — multipath, frequency-selective fading, antenna gain patterns — the experiment isolates the protocol layer as the sole variable under test. The UART bus carries two unidirectional channels, as shown in .ref {uart-asymmetric-channel-topology-section-3-1}. The data channel, routed from Node A TX to Node B RX, passes through the Attacker XOR gate: with the noise Switch open, the XOR output equals the original signal; with the Switch closed, the Pulse Generator's 1 kHz rectangular waveform is XORed onto the bus, flipping individual UART bits and producing realistic partial-frame corruption. At 9600 bps, a single UART bit spans approximately 104 µs; a 150 µs noise pulse (15% of a 1000 µs period) is therefore wide enough to corrupt one to nine consecutive bits per burst without destroying every bit in every frame — producing the probabilistic packet-error distribution that the C2P-ARQ ARQ layer is designed to survive. The feedback channel, running from Node B TX to Node A RX, is a clean, unattacked direct wire. It carries only single-byte control frames: `ACK_BYTE = 0x06` on successful Poly1305 verification, and `NACK_BYTE = 0x15` on MAC failure.
 
-.mermaid
-    graph LR
-        %% Diagram 4 — Section 3.1: UART asymmetric channel topology
-        A["Node A TX (Transmitter)"] -->|"Data channel\n[XOR noise injector]"| B["Node B RX (Receiver)"]
-        C["Node B TX (Receiver)"] -->|"Feedback channel\n[Clean wire]"| D["Node A RX (Transmitter)"]
+.mermaid ref:{uart-asymmetric-channel-topology-section-3-1} caption:{UART asymmetric channel topology in Section 3.1. The forward data channel passes through the XOR noise injector, while the reverse feedback channel remains a clean direct wire.}
+  graph LR
+    A["Node A TX (Transmitter)"] -->|"Data channel\n[XOR noise injector]"| B["Node B RX (Receiver)"]
+    C["Node B TX (Receiver)"] -->|"Feedback channel\n[Clean wire]"| D["Node A RX (Transmitter)"]
 
-.center
-    *Diagram 4: C2P-ARQ asymmetric UART channel topology in the SimulIDE testbed. The data channel is subject to XOR bit-flip corruption; the feedback channel carrying `ACK_BYTE` and `NACK_BYTE` is a direct, unattacked wire.*
+
 
 ## Common Node Components
 
@@ -499,23 +485,15 @@ Beyond the shared computing core, the two nodes differ in their peripheral compl
 
 ### Transmitter (Node A)
 
-Node A is the session initiator and the sole source of protocol control. A momentary push-button connected to digital pin 3 (INT1) with `INPUT_PULLUP` conditioning triggers session establishment asynchronously via hardware interrupt. A `millis()`-based 50 ms debounce filter eliminates contact-bounce noise from the interrupt line, ensuring that a single physical button press generates exactly one FSM transition from `IDLE` to `SENDING_HELLO`. The transmitter carries no audio output peripheral; its entire peripheral surface consists of the I2C LCD, the entropy sub-circuit, and the interrupt-bearing button. The hardware is illustrated in Figure 2.
+Node A is the session initiator and the sole source of protocol control. A momentary push-button connected to digital pin 3 (INT1) with `INPUT_PULLUP` conditioning triggers session establishment asynchronously via hardware interrupt. A `millis()`-based 50 ms debounce filter eliminates contact-bounce noise from the interrupt line, ensuring that a single physical button press generates exactly one FSM transition from `IDLE` to `SENDING_HELLO`. The transmitter carries no audio output peripheral; its entire peripheral surface consists of the I2C LCD, the entropy sub-circuit, and the interrupt-bearing button. The hardware is shown in .ref {transmitter-node-a-hardware-architecture-in-simulide}.
 
-.center
-    ![Transmitter (Node A) hardware architecture in SimulIDE](img/fig_02_transmitter_node_architecture.png)
-
-.center
-    *Figure 2: Transmitter (Node A) hardware architecture in SimulIDE. Peripherals: Aip31068 I2C LCD (A4/A5), Ring-Oscillator TRNG sub-circuit (INT0/pin 2), Noise Wave Generator sub-circuit, and the session-start push-button (pin 3).*
+![Transmitter (Node A) hardware architecture in SimulIDE](img/fig_02_transmitter_node_architecture.png "Transmitter (Node A) hardware architecture in SimulIDE. Peripherals: Aip31068 I2C LCD (A4/A5), Ring-Oscillator TRNG sub-circuit (INT0/pin 2), Noise Wave Generator sub-circuit, and the session-start push-button (pin 3).") {#transmitter-node-a-hardware-architecture-in-simulide}
 
 ### Receiver (Node B)
 
-Node B is the execution endpoint and produces no protocol control signals beyond single-byte ACK/NACK frames. It carries no button and requires no interrupt-driven input. Instead, it is equipped with a piezoelectric speaker connected to PWM-capable pin 9 (Timer 1, OC1A), driven by the Arduino `tone()` / `noTone()` API — which configures the hardware timer to generate a square wave at the target frequency without software intervention, freeing the CPU to continue servicing incoming UART bytes during playback. Note playback is strictly non-blocking: `tone(pin, frequency)` is called once at note onset, the end-timestamp is recorded, and `noTone()` is called in the subsequent `loop()` iteration in which `(millis() - noteStartTime) >= durationMs` holds. No `delay()` is inserted anywhere in the playback sequence. The receiver hardware is illustrated in Figure 3.
+Node B is the execution endpoint and produces no protocol control signals beyond single-byte ACK/NACK frames. It carries no button and requires no interrupt-driven input. Instead, it is equipped with a piezoelectric speaker connected to PWM-capable pin 9 (Timer 1, OC1A), driven by the Arduino `tone()` / `noTone()` API — which configures the hardware timer to generate a square wave at the target frequency without software intervention, freeing the CPU to continue servicing incoming UART bytes during playback. Note playback is strictly non-blocking: `tone(pin, frequency)` is called once at note onset, the end-timestamp is recorded, and `noTone()` is called in the subsequent `loop()` iteration in which `(millis() - noteStartTime) >= durationMs` holds. No `delay()` is inserted anywhere in the playback sequence. The receiver hardware is shown in .ref {receiver-node-b-hardware-architecture-in-simulide}.
 
-.center
-    ![Receiver (Node B) hardware architecture in SimulIDE](img/fig_03_receiver_node_architecture.png)
-
-.center
-    *Figure 3: Receiver (Node B) hardware architecture in SimulIDE. Peripherals: Aip31068 I2C LCD (A4/A5), Ring-Oscillator TRNG sub-circuit (INT0/pin 2), Noise Wave Generator sub-circuit, and the piezoelectric speaker (PWM pin 9).*
+![Receiver (Node B) hardware architecture in SimulIDE](img/fig_03_receiver_node_architecture.png "Receiver (Node B) hardware architecture in SimulIDE. Peripherals: Aip31068 I2C LCD (A4/A5), Ring-Oscillator TRNG sub-circuit (INT0/pin 2), Noise Wave Generator sub-circuit, and the piezoelectric speaker (PWM pin 9).") {#receiver-node-b-hardware-architecture-in-simulide}
 
 # True Random Number Generation (TRNG) & Entropy Management
 
@@ -547,13 +525,9 @@ Physical randomness in SH2SC-EDT is harvested by `generateEntropyPool()`, a one-
 
 $ 8 \times 2\,\text{ms} = 16\,\text{ms} $
 
-This is an acceptable one-time expenditure in the initialisation context, which carries no UART receive obligations. The transmitter node feeds seven sources into each word; the receiver node feeds six, the `micros()` human-timing term being absent because the receiver carries no button input. The hardware sub-circuit implementing Sources 1 and 5 is illustrated in Figure 4.
+This is an acceptable one-time expenditure in the initialisation context, which carries no UART receive obligations. The transmitter node feeds seven sources into each word; the receiver node feeds six, the `micros()` human-timing term being absent because the receiver carries no button input. The hardware sub-circuit implementing Sources 1 and 5 is shown in .ref {hardware-entropy-sub-circuit-in-simulide}.
 
-.center
-    ![Hardware entropy sub-circuit in SimulIDE](img/fig_05_hardware_entropy_circuit.png)
-
-.center
-    *Figure 4: Hardware entropy sub-circuit featuring a Ring-Oscillator and Noise Wave Generator. The ring oscillator (three CMOS inverter stages in a feedback loop) drives INT0; the Noise Wave Generator injects frequency-modulated perturbations to augment phase jitter in the SimulIDE simulation context.*
+![Hardware entropy sub-circuit in SimulIDE](img/fig_05_hardware_entropy_circuit.png "Hardware entropy sub-circuit featuring a Ring-Oscillator and Noise Wave Generator. The ring oscillator (three CMOS inverter stages in a feedback loop) drives INT0; the Noise Wave Generator injects frequency-modulated perturbations to augment phase jitter in the SimulIDE simulation context.") {#hardware-entropy-sub-circuit-in-simulide}
 
 **Source 1 — ring-oscillator gate (INT0, pin 2, RISING).** At the start of each word iteration, `s_ringOscPulses` is zeroed and the ISR `onRingOscPulse()` is attached to INT0 on the RISING edge. The MCU then blocks for 2 ms via `delay(2)`, during which the hardware ring oscillator drives INT0; the ISR increments the pulse counter on every rising edge. At gate closure the interrupt is detached and the counter is folded into the pool. The instantaneous period of the $ k $-th ring-oscillator cycle is expressed as:
 
@@ -709,16 +683,13 @@ $ 50 \times 50 = 2500\,\text{ms} $
 
 This value is deliberately chosen to fall below the 3000 ms grace period of the receiver's Smart Dynamic Watchdog (Section 7.2).
 
-The asymmetric channel model is a defining structural property of C2P-ARQ, illustrated in Diagram 5. The forward data channel, routed from Node A TX to Node B RX, passes through the XOR noise injector and is subject to arbitrary bit-flip bursts; the feedback channel, running from Node B TX to Node A RX, is a direct, noiseless wire carrying only `ACK_BYTE` (0x06) and `NACK_BYTE` (0x15). Reliability decisions — whether to accept a frame, retransmit, or suspend the session — are therefore made on clean signal regardless of the noise level on the forward path. The subsections that follow specify the three-phase lifecycle (Section 5.1), the on-wire packet formats (Section 5.2), and the acknowledgement and retry-limit mechanism (Section 5.3).
+The asymmetric channel model is a defining structural property of C2P-ARQ, as shown in .ref {uart-asymmetric-channel-topology}. The forward data channel, routed from Node A TX to Node B RX, passes through the XOR noise injector and is subject to arbitrary bit-flip bursts; the feedback channel, running from Node B TX to Node A RX, is a direct, noiseless wire carrying only `ACK_BYTE` (0x06) and `NACK_BYTE` (0x15). Reliability decisions — whether to accept a frame, retransmit, or suspend the session — are therefore made on clean signal regardless of the noise level on the forward path. The subsections that follow specify the three-phase lifecycle (Section 5.1), the on-wire packet formats (Section 5.2), and the acknowledgement and retry-limit mechanism (Section 5.3).
 
-.mermaid
+.mermaid ref:{uart-asymmetric-channel-topology} caption:{C2P-ARQ asymmetric UART channel topology in the SimulIDE testbed. The data channel is subject to XOR bit-flip corruption; the feedback channel carrying `ACK_BYTE` and `NACK_BYTE` is a direct, unattacked wire.}
     graph LR
-        %% Diagram 5 — Section 5: C2P-ARQ asymmetric channel model
+        %% C2P-ARQ asymmetric channel model
         A["Node A TX (Transmitter)"] -->|"Forward channel\n[Noisy — XOR injector]"| B["Node B RX (Receiver)"]
         C["Node B TX (Receiver)"] -->|"Feedback channel\n[Clean — direct wire]"| D["Node A RX (Transmitter)"]
-
-.center
-    *Diagram 5: C2P-ARQ asymmetric channel model as referenced in the protocol specification. Reliability decisions (ACK/NACK/suspend) are conditioned on the clean feedback channel, making the ARQ mechanism immune to noise on the forward data path.*
 
 ## Session Lifecycle: Handshake (SYN), Data Transfer (DAT), Teardown (FIN)
 
@@ -734,11 +705,10 @@ In `TxState::IDLE`, the transmitter polls digital pin 3 (`INPUT_PULLUP`) with a 
 
 The `drainRxFifo()` call before every transmission is a defensive protocol invariant: stale bytes accumulated in the hardware FIFO during the preceding idle or retry interval could otherwise be misinterpreted as a response to the freshly transmitted frame, triggering a false retry storm or, in the worst case, a spurious `ACK_BYTE` that advances the FSM without a genuine receiver response.
 
-On the receiver, `processReceivedByte()` advances the four-state byte-level parser, illustrated in Diagram 6, one byte at a time, using the preamble pair `0xAA 0x55` as the synchronisation gate. When the parser has accumulated all 13 HelloPacket body bytes into `rx_buffer` and `rx_buffer[0] & FLAG_SYN` holds, it dispatches `processHelloBody()`. This function copies `rx_buffer[1..12]` into `s_sessionNonce`, calls `s_cipher.setKey(MASTER_PSK, 32)` to pre-load the 256-bit PSK into the AEAD state, sets `s_sessionActive = true`, writes `ACK_BYTE` (0x06) to `Serial`, and initialises the Dynamic Smart Watchdog with `current_timeout_limit = 5000 ms` and `last_valid_packet_time = millis()`.
+On the receiver, `processReceivedByte()` advances the four-state byte-level parser, illustrated in .ref {syn-handshake-admission-path}, one byte at a time, using the preamble pair `0xAA 0x55` as the synchronisation gate. When the parser has accumulated all 13 HelloPacket body bytes into `rx_buffer` and `rx_buffer[0] & FLAG_SYN` holds, it dispatches `processHelloBody()`. This function copies `rx_buffer[1..12]` into `s_sessionNonce`, calls `s_cipher.setKey(MASTER_PSK, 32)` to pre-load the 256-bit PSK into the AEAD state, sets `s_sessionActive = true`, writes `ACK_BYTE` (0x06) to `Serial`, and initialises the Dynamic Smart Watchdog with `current_timeout_limit = 5000 ms` and `last_valid_packet_time = millis()`.
 
-.mermaid
+.mermaid ref:{syn-handshake-admission-path} caption:{SYN handshake admission path for HelloPacket frames. Only `FLAG_SYN` proceeds to `processHelloBody()`, which installs the session nonce, emits `ACK_BYTE`, and arms the Dynamic Smart Watchdog.}
   flowchart LR
-    %% Diagram 6 — Section 5.1: SYN handshake admission path for HelloPacket
     A[WAIT_AA] --> B[WAIT_55]
     B --> C[READ_TYPE]
     C --> D[READ_PAYLOAD]
@@ -748,9 +718,6 @@ On the receiver, `processReceivedByte()` advances the four-state byte-level pars
     F --> H[ACK + watchdog]
     G --> A
     H --> A
-
-.center
-  *Diagram 6: SYN handshake admission path. Only `FLAG_SYN` proceeds to `processHelloBody()`, which installs the session nonce, emits `ACK_BYTE`, and arms the Dynamic Smart Watchdog.*
 
 On receiving `ACK_BYTE` in `TxState::WAITING_HELLO_ACK`, the transmitter transitions to `TxState::SENDING`. If no `ACK_BYTE` arrives within `ACK_TIMEOUT_MS = 50 ms`, the FSM returns to `TxState::SENDING_HELLO` and issues a new `sendHelloPacket()` call — which generates a fresh CSPRNG nonce on every invocation, ensuring that the nonce window advances monotonically regardless of retry count. After `MAX_RETRIES = 50` consecutive failures, `suspendSession()` is invoked and the FSM enters `TxState::RECONNECTING` with `melodyIndex` preserved.
 
@@ -806,11 +773,10 @@ On MAC success, the receiver (1) writes `ACK_BYTE` to `Serial`, (2) calls `memse
 
 ### Complete Session Sequence Diagram
 
-Diagram 7 illustrates the full C2P-ARQ session lifecycle. The SYN handshake (Phase 1) synchronises the session nonce; the DAT transfer phase (Phase 2) exhibits both the normal ACK path and a retransmission cycle triggered by a MAC failure; the FIN teardown (Phase 3) shows the authenticated close and symmetric nonce erasure. Note that `seqNum` advances exclusively in `TxState::WAIT_BETWEEN_NOTES` — the ACK-success path — and is never incremented on NACK receipt or ACK timeout.
+The full C2P-ARQ session lifecycle is shown in .ref {complete-c2p-arq-session-lifecycle}. The SYN handshake (Phase 1) synchronises the session nonce; the DAT transfer phase (Phase 2) exhibits both the normal ACK path and a retransmission cycle triggered by a MAC failure; the FIN teardown (Phase 3) shows the authenticated close and symmetric nonce erasure. Note that `seqNum` advances exclusively in `TxState::WAIT_BETWEEN_NOTES` — the ACK-success path — and is never incremented on NACK receipt or ACK timeout.
 
-.mermaid
+.mermaid ref:{complete-c2p-arq-session-lifecycle} caption:{Complete C2P-ARQ session lifecycle sequence across the SYN handshake, Stop-and-Wait ARQ data transfer with retransmission, and FIN teardown with symmetric nonce erasure on both nodes.}
     sequenceDiagram
-        %% Diagram 7 — Section 5.1: Complete C2P-ARQ session lifecycle sequence
         participant TX as Node A (Transmitter)
         participant RX as Node B (Receiver)
 
@@ -840,12 +806,9 @@ Diagram 7 illustrates the full C2P-ARQ session lifecycle. The SYN handshake (Pha
         RX-->>TX: ACK_BYTE 0x06
         Note over TX: memset(nonce, 0) -> IDLE
 
-.center
-    *Diagram 7: State transition sequence for the complete C2P-ARQ session lifecycle, covering all three phases: SYN handshake, Stop-and-Wait ARQ data transfer with retransmission, and FIN teardown with symmetric nonce erasure on both nodes.*
-
 ## Wire Format: HelloPacket and DataPacket Structures
 
-All C2P-ARQ frames share a two-byte synchronisation preamble — `SYNC_BYTE_1 = 0xAA` followed by `SYNC_BYTE_2 = 0x55` — prepended to every packet on the forward data channel. The preamble is not a member field of either packet struct; the transmitter emits it via two explicit `Serial.write()` calls immediately before writing the packed struct body, and the receiver's byte-level parser uses the `WAIT_AA` — `WAIT_55` state pair, as shown in Diagram 6, to regain frame-boundary alignment after any noise-induced desynchronisation. The use of two distinct non-complementary bytes — rather than a single repeated byte — reduces the false-lock rate: the 16-bit pattern `0xAA55` cannot arise from a single bit inversion of either `0xAAAA` or `0x5555`, preventing isolated noise pulses from producing spurious frame-boundary locks.
+All C2P-ARQ frames share a two-byte synchronisation preamble — `SYNC_BYTE_1 = 0xAA` followed by `SYNC_BYTE_2 = 0x55` — prepended to every packet on the forward data channel. The preamble is not a member field of either packet struct; the transmitter emits it via two explicit `Serial.write()` calls immediately before writing the packed struct body, and the receiver's byte-level parser uses the `WAIT_AA` — `WAIT_55` state pair, as shown in .ref {syn-handshake-admission-path}, to regain frame-boundary alignment after any noise-induced desynchronisation. The use of two distinct non-complementary bytes — rather than a single repeated byte — reduces the false-lock rate: the 16-bit pattern `0xAA55` cannot arise from a single bit inversion of either `0xAAAA` or `0x5555`, preventing isolated noise pulses from producing spurious frame-boundary locks.
 
 Both packet types are declared with `#pragma pack(push, 1)` / `#pragma pack(pop)` in both firmware images. On AVR, the natural alignment of `uint8_t` and `uint16_t` fields already produces byte-aligned layout with no compiler-inserted padding, but the pragma is retained as an architecture-independent guarantee: the in-memory C struct layout is exactly the on-wire byte sequence, making the packed struct body directly castable to and from the hardware UART buffer without any explicit serialisation step.
 
@@ -861,17 +824,16 @@ The `HelloPacket` carries no AAD and uses no AEAD construction. Its `nonce` fiel
 
 ### HelloPacket — 15 Bytes on Wire
 
-The `HelloPacket` struct is a packed 13-byte body, preceded by the 2-byte preamble, for a total of 15 bytes on the wire. It contains two fields. The `flags` byte carries `FLAG_SYN = 0x01` and acts as the frame-type discriminator; the receiver matches it with the bitwise-AND predicate `rx_buffer[0] & FLAG_SYN` rather than strict equality, preserving tolerance for future multi-role flag combinations without parser modification. The `nonce[HELLO_NONCE_SIZE]` array carries the 12-byte (96-bit) CSPRNG session IV generated on the transmitter by three successive `getSecureRandom32()` calls, one call per 32-bit word, filling the full 12-byte array. The complete byte-level wire layout is illustrated in Diagram 8.
+The `HelloPacket` struct is a packed 13-byte body, preceded by the 2-byte preamble, for a total of 15 bytes on the wire. It contains two fields. The `flags` byte carries `FLAG_SYN = 0x01` and acts as the frame-type discriminator; the receiver matches it with the bitwise-AND predicate `rx_buffer[0] & FLAG_SYN` rather than strict equality, preserving tolerance for future multi-role flag combinations without parser modification. The `nonce[HELLO_NONCE_SIZE]` array carries the 12-byte (96-bit) CSPRNG session IV generated on the transmitter by three successive `getSecureRandom32()` calls, one call per 32-bit word, filling the full 12-byte array. The complete byte-level wire layout is illustrated in .ref {hellopacket-wire-layout}.
 
-.mermaid
+.mermaid ref:{hellopacket-wire-layout} caption:{On-wire byte layout of `HelloPacket` in the C2P-ARQ frame format. The 2-byte preamble is emitted separately, followed by the 13-byte packed body carrying `FLAG_SYN` and `nonce[12]`.}
     packet-beta
         0-7: "0xAA SYNC1"
         8-15: "0x55 SYNC2"
         16-23: "flags = FLAG_SYN (0x01)"
         24-119: "nonce[12] — 96-bit CSPRNG session IV"
 
-.center
-    *Diagram 8: On-wire byte layout of `HelloPacket` (15 bytes total). The 2-byte preamble is not a struct member field; it is emitted by separate `Serial.write()` calls before the 13-byte packed `HelloPacket` body.*
+
 
 The `nonce[12]` field is regenerated on every `sendHelloPacket()` invocation, including every reconnect attempt in `TxState::RECONNECTING`. Retransmitted SYN frames therefore carry a fresh nonce rather than replaying the prior one, advancing the CSPRNG output monotonically across all retry cycles and ensuring that `melodyIndex` preserved through `suspendSession()` is always paired with a freshly derived session key when the link is re-established.
 
@@ -879,9 +841,9 @@ The `nonce[12]` field is regenerated on every `sendHelloPacket()` invocation, in
 
 The `DataPacket` struct is a packed 15-byte body, preceded by the 2-byte preamble, for a total of 17 bytes on the wire. It is used for both `FLAG_DAT = 0x02` (data transfer) and `FLAG_FIN = 0x04` (session teardown); the AEAD pipeline is identical in both cases. The struct contains four fields.
 
-The `flags` field (1 byte) identifies the frame role and forms AAD byte 0. The `seq_num` field (2 bytes, `uint16_t`, little-endian) is the 16-bit packet sequence number and forms AAD bytes 1–2; it also serves as the input to the per-packet nonce derivation described in Section 5.1. Together, `flags` and `seq_num` constitute the 3-byte AAD region that is cryptographically bound to the ciphertext by the Poly1305 tag. The `payload` field (4 bytes, `uint16_t[2]`) holds the ChaCha20 stream-cipher encryption of the `{note_index, duration_ms}` pair, both encrypted atomically in a single `s_cipher.encrypt()` call of length `DATA_PAYLOAD_SIZE = 4`. The `mac` field (8 bytes, `uint8_t[TRUNCATED_MAC_SIZE]`) holds the first `TRUNCATED_MAC_SIZE = 8` bytes of the 16-byte Poly1305 output; the remaining 8 bytes are computed internally by `s_cipher.computeTag()` but not transmitted, yielding a per-frame MAC forgery probability of $ 2^{-64} $. The complete byte-level wire layout is illustrated in Diagram 9.
+The `flags` field (1 byte) identifies the frame role and forms AAD byte 0. The `seq_num` field (2 bytes, `uint16_t`, little-endian) is the 16-bit packet sequence number and forms AAD bytes 1–2; it also serves as the input to the per-packet nonce derivation described in Section 5.1. Together, `flags` and `seq_num` constitute the 3-byte AAD region that is cryptographically bound to the ciphertext by the Poly1305 tag. The `payload` field (4 bytes, `uint16_t[2]`) holds the ChaCha20 stream-cipher encryption of the `{note_index, duration_ms}` pair, both encrypted atomically in a single `s_cipher.encrypt()` call of length `DATA_PAYLOAD_SIZE = 4`. The `mac` field (8 bytes, `uint8_t[TRUNCATED_MAC_SIZE]`) holds the first `TRUNCATED_MAC_SIZE = 8` bytes of the 16-byte Poly1305 output; the remaining 8 bytes are computed internally by `s_cipher.computeTag()` but not transmitted, yielding a per-frame MAC forgery probability of $ 2^{-64} $. The complete byte-level wire layout is illustrated in .ref {datapacket-wire-layout}.
 
-.mermaid
+.mermaid ref:{datapacket-wire-layout} caption:{On-wire byte layout of `DataPacket` in the C2P-ARQ frame format. The 3-byte AAD region (`flags` + `seq_num`) is authenticated by the Poly1305 tag but not encrypted, and the 4-byte payload is ChaCha20 ciphertext.}
     packet-beta
         0-7: "0xAA SYNC1"
         8-15: "0x55 SYNC2"
@@ -890,8 +852,7 @@ The `flags` field (1 byte) identifies the frame role and forms AAD byte 0. The `
         40-71: "payload[4] — ChaCha20 ciphertext"
         72-135: "mac[8] — Poly1305 truncated tag"
 
-.center
-    *Diagram 9: On-wire byte layout of `DataPacket` (17 bytes total). The 3-byte AAD region (`flags` + `seq_num`) is authenticated by the Poly1305 tag but not encrypted; any single-bit corruption in this region invalidates the MAC and triggers retransmission via `NACK_BYTE`.*
+
 
 For `FLAG_FIN` frames, `payload` holds the ChaCha20 encryption of the zero plaintext `{0, 0}` — two `uint16_t` values equal to zero. On the receiver, `processFinPacket()` decrypts the four ciphertext bytes into a local `discardBuf[DATA_PAYLOAD_SIZE]` array; the decrypted values are discarded, but the `s_cipher.decrypt()` call is architecturally mandatory because the Poly1305 accumulator ingests ciphertext bytes as a side effect of decryption. Omitting this call before `s_cipher.computeTag()` leaves the accumulator in an incorrect intermediate state and produces a false MAC mismatch for a cryptographically valid FIN frame — a `discardBuf` pattern that any future port or extension of the receiver firmware must replicate exactly.
 
@@ -960,11 +921,10 @@ Explicitly:
 
 $ 2500 < 3000 $
 
-Were the receiver to release its nonce buffer prematurely, the first `DataPacket` dispatched after a successful reconnect handshake would fail MAC verification — because the receiver would have already erased `s_sessionNonce` and could not derive the correct per-packet IV — forcing an additional SYN round-trip and defeating the seamlessness of Auto-Resume. The 500 ms margin eliminates this race condition by construction. The complete decision logic for `TxState::WAITING_ACK`, including all three event branches and the runaway-prevention gate, is illustrated in Diagram 10.
+Were the receiver to release its nonce buffer prematurely, the first `DataPacket` dispatched after a successful reconnect handshake would fail MAC verification — because the receiver would have already erased `s_sessionNonce` and could not derive the correct per-packet IV — forcing an additional SYN round-trip and defeating the seamlessness of Auto-Resume. The 500 ms margin eliminates this race condition by construction. The complete decision logic for `TxState::WAITING_ACK`, including all three event branches and the runaway-prevention gate, is illustrated in .ref {waiting-ack-decision-tree}.
 
-.mermaid
-    flowchart TD
-        %% Diagram 10 — Section 5.3: WAITING_ACK decision tree for C2P-ARQ acknowledgement handling
+.mermaid ref:{waiting-ack-decision-tree} caption:{FSM decision tree for acknowledgement handling in `TxState::WAITING_ACK`. Both the NACK and timeout branches increment $ R $ and share the runaway-prevention gate ($ R \ge MAX\_RETRIES $); only the NACK branch inserts a 10 ms FIFO drain pause before retransmission. On gate failure, `suspendSession()` zeroes the session nonce for forward secrecy and transitions to `RECONNECTING` while preserving `melodyIndex` — the self-healing invariant.}
+  flowchart TD
         A([Enter WAITING_ACK]) --> B{Event in tx_loop?}
         B -->|"0x06 - ACK_BYTE"| C["retryCount := 0, noteWaitStart := millis()"]
         B -->|"0x15 - NACK_BYTE"| D["drain FIFO 10ms, retryCount++"]
@@ -976,9 +936,6 @@ Were the receiver to release its nonce buffer prematurely, the first `DataPacket
         G -->|Yes| I["suspendSession: zero nonce, melodyIndex kept"]
         H --> A
         I --> J([RECONNECTING])
-
-.center
-    *Diagram 10: FSM decision tree for acknowledgement handling in `TxState::WAITING_ACK`. Both the NACK and timeout branches increment $ R $ and share the runaway-prevention gate ($ R \ge MAX\_RETRIES $); only the NACK branch inserts a 10 ms FIFO drain pause before retransmission. On gate failure, `suspendSession()` zeroes the session nonce for forward secrecy and transitions to `RECONNECTING` while preserving `melodyIndex` — the self-healing invariant.*
 
 # Security Model & Cryptographic Core
 
@@ -1006,11 +963,10 @@ C2P-ARQ prevents this through explicit AAD binding. In `sendPacket()`, the call 
 
 The complete per-packet AEAD pipeline — executed by `sendPacket()` on the transmitter and mirrored by `authenticateAndPlay()` on the receiver — comprises five sequential stages: (1) `s_cipher.clear()`, `s_cipher.setKey(MASTER_PSK, 32)`, `s_cipher.setIV(packetNonce, 12)` initialises a fresh `ChaChaPoly` instance per packet with the 256-bit PSK and the per-packet nonce $ IV_i $, preventing any state carry-over between frames; (2) `s_cipher.addAuthData(aadBuf, 3)` feeds the 3-byte AAD into the Poly1305 accumulator; (3) `s_cipher.encrypt(plaintext, ciphertext, DATA_PAYLOAD_SIZE)` encrypts the 4-byte payload via the ChaCha20 counter-block keystream and simultaneously feeds the resulting ciphertext into the Poly1305 accumulator; (4) `s_cipher.computeTag(fullMac, AUTH_TAG_SIZE)` finalises the Poly1305 accumulator with the IETF length-encoding block and outputs the full 128-bit tag; (5) only the first `TRUNCATED_MAC_SIZE = 8` bytes of `fullMac` are appended to `DataPacket.mac` and placed on the wire.
 
-The resulting transmitter-side AEAD pipeline is summarized in Diagram 11.
+The resulting transmitter-side AEAD pipeline is summarized in .ref {sendpacket-aead-tx-pipeline}.
 
-.mermaid
-    flowchart TD
-        %% Diagram 11 — Section 6.1: sendPacket() ChaCha20-Poly1305 AEAD TX pipeline
+.mermaid ref:{sendpacket-aead-tx-pipeline} caption:{ChaCha20-Poly1305 AEAD TX pipeline executed by `sendPacket()` in C2P-ARQ. Each packet uses a fresh `ChaChaPoly` instance, authenticates the 3-byte plaintext header as AAD, encrypts the 4-byte payload, and transmits only the first 8 bytes of the Poly1305 tag.}
+  flowchart TD
         PSK["MASTER_PSK (32 bytes)"] --> Init
         IVi["Per-Packet Nonce IV_i (12 bytes)"] --> Init
         Init["1. clear() / setKey(PSK, 32) / setIV(IV_i, 12)"] --> AData
@@ -1022,9 +978,6 @@ The resulting transmitter-side AEAD pipeline is summarized in Diagram 11.
         Trunc["5. Truncate: first 8 of 16 bytes"] --> Wire
         Enc --> Wire
         Wire["DataPacket wire frame: Preamble + flags + seq_num + ciphertext + mac"]
-
-.center
-    *Diagram 11: ChaCha20-Poly1305 AEAD TX pipeline as executed by `sendPacket()` in the C2P-ARQ Transmitter. Each packet uses a fresh `ChaChaPoly` instance (step 1), authenticates the 3-byte plaintext header as AAD (step 2), encrypts the 4-byte note payload via ChaCha20 (step 3), computes the full 128-bit Poly1305 tag (step 4), and transmits only the first 8 bytes of the tag, yielding a per-frame MAC forgery probability of $ 2^{-64} $ (step 5).*
 
 ### Formal Verification Predicate
 
