@@ -1798,21 +1798,13 @@ On the transmitter (Node A), the previous session state has been cleared and a n
 
 On the receiver (Node B), the node remains in the disconnected drop state (`TIMEOUT! DROP`). Because the forward channel is still jammed, the receiver cannot reliably acquire and decode the incoming `HelloPacket` frames and therefore cannot install a new session nonce or respond with an acknowledgement. The resulting system behavior is a stable, deterministic reconnection loop: session re-initialization is attempted continuously by Node A, while Node B remains safely reset and uncommitted until a valid session request is observed.
 
-Figure 25 provides the topology overview of this reconnection interval. The jammer is explicitly active, and both endpoints are in post-teardown conditions: Node A is attempting a new handshake, while Node B is in a fail-safe state that prevents it from acting on unauthenticated or structurally corrupted traffic.
+The .ref {jammed-hello-retry-topology} provides the topology overview of this reconnection interval. The jammer is explicitly active, and both endpoints are in post-teardown conditions: Node A is attempting a new handshake, while Node B is in a fail-safe state that prevents it from acting on unauthenticated or structurally corrupted traffic.
 
-.center
-  ![Topology of jammed session re-initialization attempts](img/fig_25_jammed_hello_retry_topology.png)
+![Topology of jammed session re-initialization attempts](img/fig_25_jammed_hello_retry_topology.png "Topology during session re-initialization attempts under active jamming. The attacker remains enabled while Node A repeatedly transmits `HelloPacket` frames and Node B remains in a dropped session state.") {#jammed-hello-retry-topology}
 
-.center
-  *Figure 25: Topology during session re-initialization attempts under active jamming. The attacker remains enabled while Node A repeatedly transmits `HelloPacket` frames and Node B remains in a dropped session state.*
+The .ref {jammed-hello-retry-node-status} ties the reconnection attempt to the explicit FSM-visible state of both nodes. The transmitter display confirms that this is not a continuation of the prior data stream but a new session request (counter reset), and that repeated timeouts have already accumulated. Symmetrically, the receiver display confirms that the watchdog-driven teardown has left the node in a safe disconnected posture until a valid session-open frame can be parsed.
 
-Figure 26 ties the reconnection attempt to the explicit FSM-visible state of both nodes. The transmitter display confirms that this is not a continuation of the prior data stream but a new session request (counter reset), and that repeated timeouts have already accumulated. Symmetrically, the receiver display confirms that the watchdog-driven teardown has left the node in a safe disconnected posture until a valid session-open frame can be parsed.
-
-.center
-  ![Node LCD states during repeated HELLO retries under jamming](img/fig_26_jammed_hello_retry_nodes_status.png)
-
-.center
-  *Figure 26: Endpoint states under reconnection pressure. Node A displays `PKT:0 RTY:21 WAIT SYN`, confirming a fresh session attempt and repeated retries, while Node B remains in `TIMEOUT! DROP`, indicating that no new session has been admitted.*
+![Node LCD states during repeated HELLO retries under jamming](img/fig_26_jammed_hello_retry_nodes_status.png "Endpoint states under reconnection pressure. Node A displays `PKT:0 RTY:21 WAIT SYN`, confirming a fresh session attempt and repeated retries, while Node B remains in `TIMEOUT! DROP`, indicating that no new session has been admitted.") {#jammed-hello-retry-node-status}
 
 At the physical layer, the transmitter is no longer quiescent as in Scenario 6. Instead, it is actively emitting `HelloPacket` waveforms into a channel that remains dominated by the attacker disturbance process. Under the XOR injection model, the receiver-side signal satisfies
 
@@ -1820,29 +1812,21 @@ $ S_{rx}(t) = S_{tx_{hello}}(t) \oplus N(t) $
 
 where $ S_{tx_{hello}}(t) $ is the clean UART waveform corresponding to repeated `HelloPacket` transmissions and $ N(t) $ is the attacker-generated disturbance.
 
-Figure 27 shows the expected consequence of
+The .ref {oscilloscope-capture-of-hello-packets-under-continued-jamming} shows the expected consequence of
 
 $ N(t) \neq 0 $
 
 during active transmission: the clean, periodic structure of asynchronous serial bits is repeatedly violated by interference-driven inversions, so the receiver-side waveform no longer preserves the stable per-bit windows required for deterministic decoding.
 
-.center
-  ![Oscilloscope capture of jammed HELLO retransmissions](img/fig_27_jammed_hello_retry_oscilloscope.png)
+![Oscilloscope capture of jammed HELLO retransmissions](img/fig_27_jammed_hello_retry_oscilloscope.png "Oscilloscope evidence of `HelloPacket` transmissions under continued jamming. The active handshake waveform is severely distorted by XOR-injected disturbance, preventing stable symbol reconstruction at the receiver input.") {#oscilloscope-capture-of-hello-packets-under-continued-jamming}
 
-.center
-  *Figure 27: Oscilloscope evidence of `HelloPacket` transmissions under continued jamming. The active handshake waveform is severely distorted by XOR-injected disturbance, preventing stable symbol reconstruction at the receiver input.*
+The .ref {hello-packet-logic-analyzer-under-jamming} provides protocol-structure validation despite the hostile channel. Relative to the encrypted DATA packets captured earlier in .ref {clean-data-logic-analyzer} and .ref {next-clean-data-logic-analyzer}, the observed frame is shorter in duration, consistent with the `HelloPacket` design (preamble plus a compact session-request body, without the ciphertext-and-MAC tail of a DATA frame). Crucially, the preamble pattern remains visually preserved and invariant across packet types. This invariance is a structural requirement of C2P-ARQ: by fixing the preamble, the receiver parser retains a deterministic synchronization gate even when higher-layer fields are corrupted by noise.
 
-Figure 28 provides protocol-structure validation despite the hostile channel. Relative to the encrypted DATA packets captured earlier in Figures 12 and 15, the observed frame is shorter in duration, consistent with the `HelloPacket` design (preamble plus a compact session-request body, without the ciphertext-and-MAC tail of a DATA frame). Crucially, the preamble pattern remains visually preserved and invariant across packet types. This invariance is a structural requirement of C2P-ARQ: by fixing the preamble, the receiver parser retains a deterministic synchronization gate even when higher-layer fields are corrupted by noise.
+![Logic analyzer capture of jammed HELLO frames: short length, identical preamble](img/fig_28_jammed_hello_retry_logic_analyzer.png "Logic-analyzer view of repeated `HelloPacket` attempts under jamming. The overall frame duration is visibly shorter than the encrypted DATA frames of Scenarios 2 and 3, while the synchronization preamble remains strictly identical, physically validating the C2P-ARQ packet specification.") {#hello-packet-logic-analyzer-under-jamming}
 
-.center
-  ![Logic analyzer capture of jammed HELLO frames: short length, identical preamble](img/fig_28_jammed_hello_retry_logic_analyzer.png)
+The reconnection loop is summarized in .ref {jammed-hello-retry-sequence}. Node A repeatedly transmits `HelloPacket` session requests; each attempt is physically corrupted by ongoing jamming and fails to elicit an acknowledgement, causing an ARQ timeout and an increment of the retry counter. Node B remains disconnected and therefore emits no response until a valid session-open frame is admitted.
 
-.center
-  *Figure 28: Logic-analyzer view of repeated `HelloPacket` attempts under jamming. The overall frame duration is visibly shorter than the encrypted DATA frames of Scenarios 2 and 3, while the synchronization preamble remains strictly identical, physically validating the C2P-ARQ packet specification.*
-
-The reconnection loop is summarized in Diagram 20. Node A repeatedly transmits `HelloPacket` session requests; each attempt is physically corrupted by ongoing jamming and fails to elicit an acknowledgement, causing an ARQ timeout and an increment of the retry counter. Node B remains disconnected and therefore emits no response until a valid session-open frame is admitted.
-
-.mermaid
+.mermaid ref:{jammed-hello-retry-sequence} caption:{Session re-initialization attempts under active jamming. Corrupted `HelloPacket` transmissions fail to produce an ACK, forcing Node A to loop in `WAIT SYN` with an increasing retry counter while Node B remains safely dropped.}
   sequenceDiagram
     participant A as Node A (TX)
     participant B as Node B (RX)
@@ -1851,9 +1835,6 @@ The reconnection loop is summarized in Diagram 20. Node A repeatedly transmits `
       A-xB: HelloPacket (Session Request)
       Note over A: ACK timeout -> RTY++
     end
-
-.center
-  *Diagram 20: Session re-initialization attempts under active jamming. Corrupted `HelloPacket` transmissions fail to produce an ACK, forcing Node A to loop in `WAIT SYN` with an increasing retry counter while Node B remains safely dropped.*
 
 ### Scenario 8: Successful Session Recovery and Application State Persistence
 
