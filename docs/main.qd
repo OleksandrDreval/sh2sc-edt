@@ -1096,11 +1096,10 @@ is the high byte of $ i $, computed as `(seqNum >> 8u) & 0xFFu`; and
 
 $ i \bmod 256 $
 
-is the low byte, computed as `seqNum & 0xFFu`. Bytes 0–9 of the nonce are left unmodified; only bytes 10 and 11 are perturbed. The immutability of `s_sessionNonce` is enforced by the code comment present in both firmware files: `// NEVER XOR directly into s_sessionNonce — would corrupt every subsequent IV`. The per-packet nonce derivation procedure is illustrated in Diagram 12.
+is the low byte, computed as `seqNum & 0xFFu`. Bytes 0–9 of the nonce are left unmodified; only bytes 10 and 11 are perturbed. The immutability of `s_sessionNonce` is enforced by the code comment present in both firmware files: `// NEVER XOR directly into s_sessionNonce — would corrupt every subsequent IV`. The per-packet nonce derivation procedure is illustrated in .ref {per-packet-nonce-derivation}.
 
-.mermaid
-    flowchart TD
-        %% Diagram 12 - section 6.2: C2P-ARQ Per-Packet Nonce Derivation
+.mermaid ref:{per-packet-nonce-derivation} caption:{Per-packet nonce derivation in `sendPacket()` and `authenticateAndPlay()`. The base session nonce is copied to a stack-local buffer, and only bytes 10 and 11 are perturbed by XOR with the high and low bytes of the 16-bit sequence number.}
+  flowchart TD
         SN["s_sessionNonce S (12 bytes, immutable)"] --> Copy
         Copy["memcpy: stack-local packetNonce"] --> Unch
         Unch["packetNonce[0..9] = S[0..9] (unchanged)"] --> IVout
@@ -1112,9 +1111,6 @@ is the low byte, computed as `seqNum & 0xFFu`. Bytes 0–9 of the nonce are left
         B11["packetNonce[11] = S[11] XOR seq_lo"] --> IVout
         IVout["Per-Packet Nonce IV_i (12 bytes)"] --> SetIV
         SetIV["s_cipher.setIV(packetNonce, 12)"]
-
-.center
-    *Diagram 12: Per-packet nonce derivation in `sendPacket()` and `authenticateAndPlay()`. The base session nonce `s_sessionNonce` is copied to a stack-local buffer; only bytes 10 and 11 are perturbed by XOR with the high and low bytes of the 16-bit sequence number. The original `s_sessionNonce` is never mutated.*
 
 ### Injectivity of the Mapping
 
@@ -1196,12 +1192,11 @@ $ \frac{2^{96}}{10^9} \approx 7.9 \times 10^{19}\,\text{s} $
 
 ### Zeroization Trigger Points
 
-The complete lifecycle of `s_sessionNonce` in SRAM — from its initial undefined value through active use and deterministic erasure — is illustrated in Diagram 13. The C2P-ARQ implementation defines four erasure call sites, exhaustively covering all session termination paths.
+The complete lifecycle of `s_sessionNonce` in SRAM — from its initial undefined value through active use and deterministic erasure — is illustrated in .ref {session-nonce-memory-lifecycle}. The C2P-ARQ implementation defines four erasure call sites, exhaustively covering all session termination paths.
 
-.mermaid
-    stateDiagram-v2
-    direction LR
-        %% Diagram 13 - section 6.3: s_sessionNonce Memory Lifecycle in C2P-ARQ
+.mermaid ref:{session-nonce-memory-lifecycle} caption:{`s_sessionNonce` memory lifecycle in C2P-ARQ. Three independent triggers drive the transition to the `Zeroed` state, ensuring that key material is erased under both protocol-level termination and unilateral link failure.}
+  stateDiagram-v2
+  direction LR
         [*] --> Uninitialized
     Uninitialized --> Filled : SYN accepted\nnonce loaded via memcpy\n(HelloPacket)
     Filled --> Active : ACK_BYTE sent\ns_sessionActive = true
@@ -1210,9 +1205,6 @@ The complete lifecycle of `s_sessionNonce` in SRAM — from its initial undefine
     Active --> Zeroed : Unclean close\nsuspendSession(), MAX_RETRIES exhausted (TX)
     Active --> Zeroed : Dynamic Watchdog timeout\nTX silent, no FIN (RX)
         Zeroed --> Uninitialized : Ready for next session SYN
-
-.center
-    *Diagram 13: `s_sessionNonce` memory lifecycle in C2P-ARQ. Three independent triggers drive the transition to the `Zeroed` state, ensuring that key material is erased under both protocol-level termination and unilateral link failure.*
 
 #### TX Node — Clean Close
 
@@ -1343,11 +1335,10 @@ $ \langle P_{k_j}, \ldots, P_{M-1} \rangle $
 
 completes without disruption.
 
-Diagram 14 illustrates the Self-Healing automaton from the TX perspective.
+The Self-Healing automaton from the TX perspective is shown in .ref {self-healing-tx-automaton}.
 
-.mermaid
-    stateDiagram-v2
-        %% Diagram 14 - section 7.1: Self-Healing automaton on the TX node
+.mermaid ref:{self-healing-tx-automaton} caption:{Self-Healing automaton on the TX node. On `MAX_RETRIES` exhaustion, `suspendSession()` erases cryptographic state and preserves `melodyIndex`; the non-blocking timer re-attempts the handshake every `RECONNECT_INTERVAL_MS`.}
+  stateDiagram-v2
         [*] --> SENDING
         SENDING --> WAITING_ACK : DataPacket transmitted
         WAITING_ACK --> SENDING : ACK received
@@ -1362,9 +1353,6 @@ Diagram 14 illustrates the Self-Healing automaton from the TX perspective.
         WAITING_HELLO_ACK --> SENDING : ACK received
         WAITING_HELLO_ACK --> RECONNECTING : MAX_RETRIES exceeded
         WAITING_ACK --> [*] : all notes delivered
-
-.center
-    *Diagram 14: Self-Healing automaton on the TX node. On `MAX_RETRIES` exhaustion, `suspendSession()` erases cryptographic state and preserves `melodyIndex`; the non-blocking timer re-attempts the handshake every `RECONNECT_INTERVAL_MS = 2000 ms`. On successful reconnect, `SENDING` resumes from the preserved index $ k_j $.*
 
 ### Non-Blocking RECONNECTING Polling
 
@@ -1425,11 +1413,10 @@ if (s_sessionActive &&
 }
 ```
 
-The complete watchdog logic — from session arming through conditional erasure — is illustrated in Diagram 15.
+The complete watchdog logic — from session arming through conditional erasure — is illustrated in .ref {smart-dynamic-watchdog-rx-loop}.
 
-.mermaid
-    flowchart TD
-        %% Diagram 15 - section 7.2: Smart Dynamic Watchdog evaluation in rx_loop()
+.mermaid ref:{smart-dynamic-watchdog-rx-loop} caption:{Smart Dynamic Watchdog evaluation path in `rx_loop()`. The condition `millis() - last_valid_packet_time > current_timeout_limit` is evaluated on every loop iteration; the erasure branch executes at most once per session.}
+  flowchart TD
         A([rx_loop iteration]) --> B{s_sessionActive?}
         B -- No --> Z([Skip - no open session])
         B -- Yes --> C{"millis() - last_valid > current_timeout_limit?"}
@@ -1439,9 +1426,6 @@ The complete watchdog logic — from session arming through conditional erasure 
         E --> F[s_sessionActive = false]
         F --> G[resetParser - back to WAIT_AA]
         G --> H([Session RAM released - ready for new SYN])
-
-.center
-    *Diagram 15: Smart Dynamic Watchdog evaluation path in `rx_loop()`. The condition `millis() - last_valid_packet_time > current_timeout_limit` is evaluated on every loop iteration; the erasure branch executes at most once per session.*
 
 ### Absence of Race Conditions Between TX and RX
 
@@ -1513,11 +1497,10 @@ Once the FIFO is drained and the parser is in `WAIT_AA`, the receiver begins pas
 
 No frame body is accumulated until both preamble bytes have been matched in sequence. The gate is unconditional: `FLAG_SYN`, `FLAG_DAT`, and `FLAG_FIN` frames are all subject to the identical `0xAA 0x55` requirement. The source comment at `WAIT_AA` reads: *"Any other byte (including FLAG_SYN=0x01 without preamble) — channel noise, stay."*
 
-The combined TX-drain and RX-preamble-hunt desynchronization recovery process is illustrated in Diagram 16.
+The combined TX-drain and RX-preamble-hunt desynchronization recovery process is illustrated in .ref {bilateral-desynchronization-recovery}.
 
-.mermaid
-    flowchart TD
-        %% Diagram 16 - section 7.3: Bilateral desynchronization recovery after a noise burst
+.mermaid ref:{bilateral-desynchronization-recovery} caption:{Bilateral desynchronization recovery after a noise burst. The TX node drains its receive FIFO before transmitting; the RX node discards arbitrary garbage bytes until the `0xAA 0x55` preamble is matched.}
+  flowchart TD
         subgraph TX ["TX Node - Active Drain"]
             T1([Enter SENDING_HELLO / SENDING / SENDING_FIN]) --> T2["drainRxFifo() - discard up to 64 stale bytes"]
             T2 --> T3["Serial.write(0xAA) + Serial.write(0x55)"]
@@ -1533,9 +1516,6 @@ The combined TX-drain and RX-preamble-hunt desynchronization recovery process is
             R3 -- Yes --> R4([READ_TYPE - preamble confirmed, sync restored])
         end
         T3 -.->|UART bus| R2
-
-.center
-    *Diagram 16: Bilateral desynchronization recovery after a noise burst. The TX node drains its receive FIFO before transmitting; the RX node discards arbitrary garbage bytes until the `0xAA 0x55` preamble is matched. Both mechanisms operate independently and compose to eliminate stale-byte poisoning from either direction.*
 
 ### Probability of False Synchronization
 
