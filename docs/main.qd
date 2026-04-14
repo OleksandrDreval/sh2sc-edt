@@ -90,20 +90,6 @@
       margin: 0 !important;
     }
 
-    /* Display math blocks must not receive text-align:justify — they are
-       centred by default and justification corrupts KaTeX layout. */
-    .quarkdown.quarkdown-paged formula[data-block] {
-      text-align: center !important;
-    }
-
-    /* No indent inside centered captions, math display, ToC */
-    .quarkdown.quarkdown-paged .center p,
-    .quarkdown.quarkdown-paged .katex-display p,
-    .quarkdown.quarkdown-paged .table-of-contents p {
-      text-indent: 0 !important;
-      text-align: center !important;
-    }
-
     /* Figure and diagram captions are centered locally via .center blocks. */
 
     /* Continuation of paragraph on next page (Pagedjs data-split-from): no indentation.
@@ -117,11 +103,6 @@
        must also be justified — otherwise it renders left-aligned like a paragraph ending. */
     .quarkdown.quarkdown-paged p[data-split-to] {
       text-align-last: justify !important;
-    }
-
-    /* Preserve math display block spacing */
-    .katex-display {
-      margin: 0.6em 0;
     }
 
     /* Mirrored headers & footers (C2P-ARQ paper)
@@ -178,7 +159,7 @@
       padding: 0;
     }
 
-    /* Footer boxes: push content to top so text sits adjacent to separator line */
+    /* Footer boxes: push content to top so text sits adjacent to separator line                   ЗАЛИШИТИ*/
     .pagedjs_page .pagedjs_margin-bottom-left,
     .pagedjs_page .pagedjs_margin-bottom-right {
       display: flex;
