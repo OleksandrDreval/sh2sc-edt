@@ -159,7 +159,7 @@
       padding: 0;
     }
 
-    /* Footer boxes: push content to top so text sits adjacent to separator line                   ЗАЛИШИТИ*/
+    /* Footer boxes: push content to top so text sits adjacent to separator line */
     .pagedjs_page .pagedjs_margin-bottom-left,
     .pagedjs_page .pagedjs_margin-bottom-right {
       display: flex;
@@ -241,15 +241,6 @@
     /* Prevent clipped bottom margins on elements split at page boundary. */
     .pagedjs_page .pagedjs_area > div > *:last-child {
       margin-bottom: 0 !important;
-    }
-
-    /* Keep figures and math blocks intact across pages
-       Mermaid diagrams and display-math formula elements should not be
-       split across a page boundary when avoidable. */
-    .quarkdown.quarkdown-paged .mermaid,
-    .quarkdown.quarkdown-paged formula[data-block] {
-      break-inside: avoid !important;
-      page-break-inside: avoid !important;
     }
 
     </style>
