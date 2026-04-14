@@ -31,7 +31,7 @@
 .pageformat size:{A4}
 .pageformat margin:{4cm}
 .pageformat alignment:{justify}
-.pageformat bordertop:{0.5pt} borderbottom:{0.5pt} bordercolor:{#333333}
+.pageformat bordertop:{0.5pt} bordercolor:{#333333}
 
 .html
     <style>
@@ -293,13 +293,7 @@
     .currentpage
 
 .pagemargin {topoutside}
-    O. Dreval: SH2SC-EDT
-
-.pagemargin {bottominside}
-    O. Dreval: C2P-ARQ
-
-.pagemargin {bottomoutside}
-    .currentpage
+  O. Dreval: SH2SC-EDT and C2P-ARQ
 
 .include {title_page.qd}
 
