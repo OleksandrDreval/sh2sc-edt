@@ -101,25 +101,19 @@
       text-align-last: justify !important;
     }
 
-    /* Mirrored headers & footers (C2P-ARQ paper)
+     /* Mirrored headers (C2P-ARQ paper)
 
        topinside:     right pages → top-left  (page number)
                       left  pages → top-right (page number)
-       topoutside:    right pages → top-right (O. Dreval: SH2SC-EDT)
-                      left  pages → top-left  (O. Dreval: SH2SC-EDT)
-       bottominside:  right pages → bottom-left  (O. Dreval: C2P-ARQ)
-                      left  pages → bottom-right (O. Dreval: C2P-ARQ)
-       bottomoutside: right pages → bottom-right (page number)
-                      left  pages → bottom-left  (page number)
+       topoutside:    right pages → top-right (O. Dreval: SH2SC-EDT and C2P-ARQ)
+                      left  pages → top-left  (O. Dreval: SH2SC-EDT and C2P-ARQ)
 
        Left margin boxes are flush-left; right margin boxes are flush-right,
        pushing page number and title to their respective outer edges.
-       Separator lines sit on the bottom edge of .pagedjs_margin-top and the
-       top edge of .pagedjs_margin-bottom — the exact header/footer boundary. */
+       The separator line sits on the bottom edge of .pagedjs_margin-top. */
 
     /* Left margin boxes: flush to the left edge */
-    .pagedjs_page .pagedjs_margin-top-left .pagedjs_margin-content,
-    .pagedjs_page .pagedjs_margin-bottom-left .pagedjs_margin-content {
+    .pagedjs_page .pagedjs_margin-top-left .pagedjs_margin-content {
       font-size: 9pt;
       line-height: 1.2;
       text-align: left;
@@ -129,8 +123,7 @@
     }
 
     /* Right margin boxes: flush to the right edge */
-    .pagedjs_page .pagedjs_margin-top-right .pagedjs_margin-content,
-    .pagedjs_page .pagedjs_margin-bottom-right .pagedjs_margin-content {
+    .pagedjs_page .pagedjs_margin-top-right .pagedjs_margin-content {
       font-size: 9pt;
       line-height: 1.2;
       text-align: right;
@@ -155,17 +148,9 @@
       padding: 0;
     }
 
-    /* Footer boxes: push content to top so text sits adjacent to separator line */
-    .pagedjs_page .pagedjs_margin-bottom-left,
-    .pagedjs_page .pagedjs_margin-bottom-right {
-      display: flex;
-      align-items: flex-start;
-      padding: 0;
-    }
-
-    /* Space between separator lines and the running text.
-       padding-top pushes text away from the header rule;
-       padding-bottom pushes text away from the footer rule. */
+    /* Space between the header separator line and the running text.
+       Keep a small breathing room between the header rule and body text,
+       and a minimal buffer before the body starts. */
     .pagedjs_area {
       padding-top: 14pt !important;
       padding-bottom: 14pt !important;
