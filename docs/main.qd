@@ -43,8 +43,6 @@
     /* IACR / Springer LNCS paragraph formatting */
     .quarkdown.quarkdown-paged p {
       margin-top: 0 !important;
-      orphans: 3;
-      widows: 3;
     }
 
     /* First paragraph directly after any heading: no indent */
