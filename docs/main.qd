@@ -1650,7 +1650,7 @@ After a false preamble match, the parser advances to `READ_TYPE`. A false `READ_
 
 # Adversary Model and Jamming Simulation {#sec-8-adversary-model-and-jamming-simulation}
 
-Sections 6 and 7 establish two necessary pillars of correctness: cryptographic security under the AEAD construction and deterministic recovery logic under bounded retransmission. These results guarantee confidentiality, integrity, and protocol-level state repair properties under the C2P-ARQ design assumptions. However, they are not by themselves sufficient to prove operational robustness in the presence of sustained physical-layer disruption.
+.ref {sec-6-security-model-cryptographic-core} and .ref {sec-7-fault-tolerance-and-self-healing-mechanisms} establish two necessary pillars of correctness: cryptographic security under the AEAD construction and deterministic recovery logic under bounded retransmission. These results guarantee confidentiality, integrity, and protocol-level state repair properties under the C2P-ARQ design assumptions. However, they are not by themselves sufficient to prove operational robustness in the presence of sustained physical-layer disruption.
 
 Liveness and fault tolerance must be demonstrated empirically under adversarial channel conditions, where frame delivery is repeatedly impeded by active interference rather than by benign random noise. The objective of this section is therefore to subject C2P-ARQ to the strongest physical stress test available in the SimulIDE environment and evaluate whether end-to-end session progress is preserved without operator intervention.
 
