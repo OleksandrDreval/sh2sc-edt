@@ -328,7 +328,7 @@ C2P-ARQ mandates ChaCha20-Poly1305 AEAD for every DATA and FIN frame without exc
 
 All transmitter and receiver logic is implemented as deterministic FSMs with no `delay()` calls in the main execution loop. Every FSM transition is conditioned on `millis()` delta comparisons, making RAM occupancy and CPU time per loop iteration statically bounded and predictable. The transmitter FSM defines nine explicit states covering the full session lifecycle — `IDLE`, `RECONNECTING`, `SENDING_HELLO`, `WAITING_HELLO_ACK`, `SENDING`, `WAITING_ACK`, `WAIT_BETWEEN_NOTES`, `SENDING_FIN`, and `WAITING_FIN_ACK` — while the receiver implements a four-state byte-level parser, as shown in .ref {rx-parser-states}, driven by each incoming UART byte. This design eliminates the class of concurrency bugs that arise from blocking I/O and guarantees deterministic behaviour under the real-time constraints of the SimulIDE simulation environment.
 
-.mermaid ref:{rx-parser-states} caption:{RX byte-level frame parser states (`processReceivedByte()`): each incoming UART byte advances the parser one step; `resetParser()` on MAC failure or timeout returns the parser to `WAIT_AA`.}
+.mermaid ref:{rx-parser-states} caption:{RX byte-level frame parser states (processReceivedByte()): each incoming UART byte advances the parser one step; resetParser() on MAC failure or timeout returns the parser to WAIT_AA.}
     graph LR
         %% RX byte-level parser states
         A[WAIT_AA] --> B[WAIT_55]
@@ -385,7 +385,7 @@ C2P-ARQ resolves this constraint through exclusive reliance on non-blocking FSMs
 
 This design provides temporal determinism as a first-class property: at any point during execution, the precise state of the system is encoded in a single enum value with no hidden implicit state. The transmitter FSM defines nine states — `IDLE`, `RECONNECTING`, `SENDING_HELLO`, `WAITING_HELLO_ACK`, `SENDING`, `WAITING_ACK`, `WAIT_BETWEEN_NOTES`, `SENDING_FIN`, and `WAITING_FIN_ACK` — covering the complete session lifecycle from quiescence through authenticated teardown. The receiver implements a four-state byte-level parser, as shown in .ref {rx-parser-recovery}, that advances one byte at a time and resets atomically to `WAIT_AA` on any MAC failure or parser timeout, guaranteeing that frame boundary corruption cannot propagate into subsequent frames. Because all session-recovery logic — `suspendSession()`, nonce erasure, `melodyIndex` preservation — executes within well-defined state transitions, the Auto-Resume mechanism is free of race conditions and memory leaks by construction: the system may remain in `RECONNECTING` indefinitely under sustained jamming without accumulating unbounded resource consumption.
 
-.mermaid ref:{rx-parser-recovery} caption:{RX parser recovery path. The byte-level FSM advances through preamble admission and returns to `WAIT_AA` on MAC failure, parser timeout, or an explicit `resetParser()` call.}
+.mermaid ref:{rx-parser-recovery} caption:{RX parser recovery path. The byte-level FSM advances through preamble admission and returns to WAIT_AA on MAC failure, parser timeout, or an explicit resetParser() call.}
   stateDiagram-v2
     %% RX parser recovery path after MAC fail or timeout
     [*] --> WAIT_AA
@@ -403,9 +403,9 @@ SH2SC-EDT was designed from inception to be validated within a fully reproducibl
 
 The SH2SC-EDT simulation topology comprises two microcontroller nodes and an Attacker sub-circuit, as shown in .ref {full-simulation-topology-in-simulide}. Node A (Transmitter, "The Conductor") is an ATmega328P-based Arduino Nano responsible for the entire C2P-ARQ session lifecycle: it owns the `PROGMEM` melody table, maintains the authoritative `melodyIndex`, drives the nine-state transmitter FSM from `IDLE` through `WAITING_FIN_ACK`, and executes `suspendSession()` on link failure. Node B (Receiver, "The Synthesizer") is a second Arduino Nano that holds only the 21-entry universal note-frequency dictionary and the 12-byte session nonce; it is intentionally stateless with respect to melody progress. The Attacker is a hardware-only sub-circuit — it is not a microcontroller, not a third node, and not a firmware entity. It consists of an XOR gate, a 1 kHz Pulse Generator with 15% duty cycle, an AND gate, and a manual Switch, wired in series on the UART data line between Node A and Node B.
 
-![Full simulation topology in SimulIDE](img/fig_01_full_simulation_topology.png "Full simulation topology in SimulIDE. Node A (Transmitter) is connected to Node B (Receiver) over a UART bus routed through the Attacker XOR noise injector. The clean feedback channel, as shown in .ref {uart-feedback-channel}, bypasses the injector entirely.") {#full-simulation-topology-in-simulide}
+![Full simulation topology in SimulIDE](img/fig_01_full_simulation_topology.png "Full simulation topology in SimulIDE. Node A (Transmitter) is connected to Node B (Receiver) over a UART bus routed through the Attacker XOR noise injector. The clean feedback channel bypasses the injector entirely.") {#full-simulation-topology-in-simulide}
 
-.mermaid ref:{uart-feedback-channel} caption:{UART feedback channel direction in the SH2SC-EDT testbed. Node B TX reaches Node A RX only through the clean, unattacked feedback wire carrying `ACK_BYTE` and `NACK_BYTE`.}
+.mermaid ref:{uart-feedback-channel} caption:{UART feedback channel direction in the SH2SC-EDT testbed. Node B TX reaches Node A RX only through the clean, unattacked feedback wire carrying ACK_BYTE and NACK_BYTE.}
   graph LR
     A["Node B TX (Receiver)"] -->|"ACK / NACK only — clean, unattacked"| B["Node A RX (Transmitter)"]
 
@@ -690,7 +690,7 @@ This value is deliberately chosen to fall below the 3000 ms grace period of the 
 
 The asymmetric channel model is a defining structural property of C2P-ARQ, as shown in .ref {uart-asymmetric-channel-topology}. The forward data channel, routed from Node A TX to Node B RX, passes through the XOR noise injector and is subject to arbitrary bit-flip bursts; the feedback channel, running from Node B TX to Node A RX, is a direct, noiseless wire carrying only `ACK_BYTE` (0x06) and `NACK_BYTE` (0x15). Reliability decisions — whether to accept a frame, retransmit, or suspend the session — are therefore made on clean signal regardless of the noise level on the forward path. The subsections that follow specify the three-phase lifecycle (.ref {sec-5-1-session-lifecycle-handshake-syn-data-transfer-dat-teardown-fin}), the on-wire packet formats (.ref {sec-5-2-wire-format-hellopacket-and-datapacket-structures}), and the acknowledgement and retry-limit mechanism (.ref {sec-5-3-acknowledgement-mechanism-and-runaway-retry-prevention}).
 
-.mermaid ref:{uart-asymmetric-channel-topology} caption:{C2P-ARQ asymmetric UART channel topology in the SimulIDE testbed. The data channel is subject to XOR bit-flip corruption; the feedback channel carrying `ACK_BYTE` and `NACK_BYTE` is a direct, unattacked wire.}
+.mermaid ref:{uart-asymmetric-channel-topology} caption:{C2P-ARQ asymmetric UART channel topology in the SimulIDE testbed. The data channel is subject to XOR bit-flip corruption; the feedback channel carrying ACK_BYTE and NACK_BYTE is a direct, unattacked wire.}
     graph LR
         %% C2P-ARQ asymmetric channel model
         A["Node A TX (Transmitter)"] -->|"Forward channel\n[Noisy — XOR injector]"| B["Node B RX (Receiver)"]
@@ -714,7 +714,7 @@ The `drainRxFifo()` call before every transmission is a defensive protocol invar
 
 On the receiver, `processReceivedByte()` advances the four-state byte-level parser, illustrated in .ref {syn-handshake-admission-path}, one byte at a time, using the preamble pair `0xAA 0x55` as the synchronisation gate. When the parser has accumulated all 13 HelloPacket body bytes into `rx_buffer` and `rx_buffer[0] & FLAG_SYN` holds, it dispatches `processHelloBody()`. This function copies `rx_buffer[1..12]` into `s_sessionNonce`, calls `s_cipher.setKey(MASTER_PSK, 32)` to pre-load the 256-bit PSK into the AEAD state, sets `s_sessionActive = true`, writes `ACK_BYTE` (0x06) to `Serial`, and initialises the Dynamic Smart Watchdog with `current_timeout_limit = 5000 ms` and `last_valid_packet_time = millis()`.
 
-.mermaid ref:{syn-handshake-admission-path} caption:{SYN handshake admission path for HelloPacket frames. Only `FLAG_SYN` proceeds to `processHelloBody()`, which installs the session nonce, emits `ACK_BYTE`, and arms the Dynamic Smart Watchdog.}
+.mermaid ref:{syn-handshake-admission-path} caption:{SYN handshake admission path for HelloPacket frames. Only FLAG_SYN proceeds to processHelloBody(), which installs the session nonce, emits ACK_BYTE, and arms the Dynamic Smart Watchdog.}
   flowchart LR
     A[WAIT_AA] --> B[WAIT_55]
     B --> C[READ_TYPE]
@@ -847,7 +847,7 @@ The `HelloPacket` carries no AAD and uses no AEAD construction. Its `nonce` fiel
 
 The `HelloPacket` struct is a packed 13-byte body, preceded by the 2-byte preamble, for a total of 15 bytes on the wire. It contains two fields. The `flags` byte carries `FLAG_SYN = 0x01` and acts as the frame-type discriminator; the receiver matches it with the bitwise-AND predicate `rx_buffer[0] & FLAG_SYN` rather than strict equality, preserving tolerance for future multi-role flag combinations without parser modification. The `nonce[HELLO_NONCE_SIZE]` array carries the 12-byte (96-bit) CSPRNG session IV generated on the transmitter by three successive `getSecureRandom32()` calls, one call per 32-bit word, filling the full 12-byte array. The complete byte-level wire layout is illustrated in .ref {hellopacket-wire-layout}.
 
-.mermaid ref:{hellopacket-wire-layout} caption:{On-wire byte layout of `HelloPacket` in the C2P-ARQ frame format. The 2-byte preamble is emitted separately, followed by the 13-byte packed body carrying `FLAG_SYN` and `nonce[12]`.}
+.mermaid ref:{hellopacket-wire-layout} caption:{On-wire byte layout of HelloPacket in the C2P-ARQ frame format. The 2-byte preamble is emitted separately, followed by the 13-byte packed body carrying FLAG_SYN and nonce[12].}
     packet-beta
         0-7: "0xAA SYNC1"
         8-15: "0x55 SYNC2"
@@ -864,7 +864,7 @@ The `DataPacket` struct is a packed 15-byte body, preceded by the 2-byte preambl
 
 The `flags` field (1 byte) identifies the frame role and forms AAD byte 0. The `seq_num` field (2 bytes, `uint16_t`, little-endian) is the 16-bit packet sequence number and forms AAD bytes 1–2; it also serves as the input to the per-packet nonce derivation described in .ref {sec-5-1-session-lifecycle-handshake-syn-data-transfer-dat-teardown-fin}. Together, `flags` and `seq_num` constitute the 3-byte AAD region that is cryptographically bound to the ciphertext by the Poly1305 tag. The `payload` field (4 bytes, `uint16_t[2]`) holds the ChaCha20 stream-cipher encryption of the `{note_index, duration_ms}` pair, both encrypted atomically in a single `s_cipher.encrypt()` call of length `DATA_PAYLOAD_SIZE = 4`. The `mac` field (8 bytes, `uint8_t[TRUNCATED_MAC_SIZE]`) holds the first `TRUNCATED_MAC_SIZE = 8` bytes of the 16-byte Poly1305 output; the remaining 8 bytes are computed internally by `s_cipher.computeTag()` but not transmitted, yielding a per-frame MAC forgery probability of $ 2^{-64} $. The complete byte-level wire layout is illustrated in .ref {datapacket-wire-layout}.
 
-.mermaid ref:{datapacket-wire-layout} caption:{On-wire byte layout of `DataPacket` in the C2P-ARQ frame format. The 3-byte AAD region (`flags` + `seq_num`) is authenticated by the Poly1305 tag but not encrypted, and the 4-byte payload is ChaCha20 ciphertext.}
+.mermaid ref:{datapacket-wire-layout} caption:{On-wire byte layout of DataPacket in the C2P-ARQ frame format. The 3-byte AAD region (flags + seq_num) is authenticated by the Poly1305 tag but not encrypted, and the 4-byte payload is ChaCha20 ciphertext.}
     packet-beta
         0-7: "0xAA SYNC1"
         8-15: "0x55 SYNC2"
@@ -956,7 +956,7 @@ $$$
 
 Were the receiver to release its nonce buffer prematurely, the first `DataPacket` dispatched after a successful reconnect handshake would fail MAC verification — because the receiver would have already erased `s_sessionNonce` and could not derive the correct per-packet IV — forcing an additional SYN round-trip and defeating the seamlessness of Auto-Resume. The 500 ms margin eliminates this race condition by construction. The complete decision logic for `TxState::WAITING_ACK`, including all three event branches and the runaway-prevention gate, is illustrated in .ref {waiting-ack-decision-tree}.
 
-.mermaid ref:{waiting-ack-decision-tree} caption:{FSM decision tree for acknowledgement handling in `TxState::WAITING_ACK`. Both the NACK and timeout branches increment $ R $ and share the runaway-prevention gate ($ R \ge MAX\_RETRIES $); only the NACK branch inserts a 10 ms FIFO drain pause before retransmission. On gate failure, `suspendSession()` zeroes the session nonce for forward secrecy and transitions to `RECONNECTING` while preserving `melodyIndex` — the self-healing invariant.}
+.mermaid ref:{waiting-ack-decision-tree} caption:{FSM decision tree for acknowledgement handling in the WAITING_ACK state. Both the NACK and timeout branches increment the retry counter and share the runaway-prevention gate; only the NACK branch inserts a 10 ms FIFO drain pause before retransmission. On gate failure, suspendSession() zeroes the session nonce for forward secrecy and transitions to RECONNECTING while preserving melodyIndex — the self-healing invariant.}
   flowchart TD
         A([Enter WAITING_ACK]) --> B{Event in tx_loop?}
         B -->|"0x06 - ACK_BYTE"| C["retryCount := 0, noteWaitStart := millis()"]
@@ -998,7 +998,7 @@ The complete per-packet AEAD pipeline — executed by `sendPacket()` on the tran
 
 The resulting transmitter-side AEAD pipeline is summarized in .ref {sendpacket-aead-tx-pipeline}.
 
-.mermaid ref:{sendpacket-aead-tx-pipeline} caption:{ChaCha20-Poly1305 AEAD TX pipeline executed by `sendPacket()` in C2P-ARQ. Each packet uses a fresh `ChaChaPoly` instance, authenticates the 3-byte plaintext header as AAD, encrypts the 4-byte payload, and transmits only the first 8 bytes of the Poly1305 tag.}
+.mermaid ref:{sendpacket-aead-tx-pipeline} caption:{ChaCha20-Poly1305 AEAD TX pipeline executed by sendPacket() in C2P-ARQ. Each packet uses a fresh ChaChaPoly instance, authenticates the 3-byte plaintext header as AAD, encrypts the 4-byte payload, and transmits only the first 8 bytes of the Poly1305 tag.}
   flowchart TD
         PSK["MASTER_PSK (32 bytes)"] --> Init
         IVi["Per-Packet Nonce IV_i (12 bytes)"] --> Init
@@ -1161,7 +1161,7 @@ $$$
 
 is the low byte, computed as `seqNum & 0xFFu`. Bytes 0–9 of the nonce are left unmodified; only bytes 10 and 11 are perturbed. The immutability of `s_sessionNonce` is enforced by the code comment present in both firmware files: `// NEVER XOR directly into s_sessionNonce — would corrupt every subsequent IV`. The per-packet nonce derivation procedure is illustrated in .ref {per-packet-nonce-derivation}.
 
-.mermaid ref:{per-packet-nonce-derivation} caption:{Per-packet nonce derivation in `sendPacket()` and `authenticateAndPlay()`. The base session nonce is copied to a stack-local buffer, and only bytes 10 and 11 are perturbed by XOR with the high and low bytes of the 16-bit sequence number.}
+.mermaid ref:{per-packet-nonce-derivation} caption:{Per-packet nonce derivation in sendPacket() and authenticateAndPlay(). The base session nonce is copied to a stack-local buffer, and only bytes 10 and 11 are perturbed by XOR with the high and low bytes of the 16-bit sequence number.}
   flowchart TD
         SN["s_sessionNonce S (12 bytes, immutable)"] --> Copy
         Copy["memcpy: stack-local packetNonce"] --> Unch
@@ -1287,7 +1287,7 @@ $$$
 
 The complete lifecycle of `s_sessionNonce` in SRAM — from its initial undefined value through active use and deterministic erasure — is illustrated in .ref {session-nonce-memory-lifecycle}. The C2P-ARQ implementation defines four erasure call sites, exhaustively covering all session termination paths.
 
-.mermaid ref:{session-nonce-memory-lifecycle} caption:{`s_sessionNonce` memory lifecycle in C2P-ARQ. Three independent triggers drive the transition to the `Zeroed` state, ensuring that key material is erased under both protocol-level termination and unilateral link failure.}
+.mermaid ref:{session-nonce-memory-lifecycle} caption:{s_sessionNonce memory lifecycle in C2P-ARQ. Three independent triggers drive the transition to the Zeroed state, ensuring that key material is erased under both protocol-level termination and unilateral link failure.}
   stateDiagram-v2
   direction LR
         [*] --> Uninitialized
@@ -1440,7 +1440,7 @@ completes without disruption.
 
 The Self-Healing automaton from the TX perspective is shown in .ref {self-healing-tx-automaton}.
 
-.mermaid ref:{self-healing-tx-automaton} caption:{Self-Healing automaton on the TX node. On `MAX_RETRIES` exhaustion, `suspendSession()` erases cryptographic state and preserves `melodyIndex`; the non-blocking timer re-attempts the handshake every `RECONNECT_INTERVAL_MS`.}
+.mermaid ref:{self-healing-tx-automaton} caption:{Self-Healing automaton on the TX node. On MAX_RETRIES exhaustion, suspendSession() erases cryptographic state and preserves melodyIndex; the non-blocking timer re-attempts the handshake every RECONNECT_INTERVAL_MS.}
   stateDiagram-v2
         [*] --> SENDING
         SENDING --> WAITING_ACK : DataPacket transmitted
@@ -1522,7 +1522,7 @@ if (s_sessionActive &&
 
 The complete watchdog logic — from session arming through conditional erasure — is illustrated in .ref {smart-dynamic-watchdog-rx-loop}.
 
-.mermaid ref:{smart-dynamic-watchdog-rx-loop} caption:{Smart Dynamic Watchdog evaluation path in `rx_loop()`. The condition `millis() - last_valid_packet_time > current_timeout_limit` is evaluated on every loop iteration; the erasure branch executes at most once per session.}
+.mermaid ref:{smart-dynamic-watchdog-rx-loop} caption:{Smart Dynamic Watchdog evaluation path in rx_loop(). The condition millis() - last_valid_packet_time > current_timeout_limit is evaluated on every loop iteration; the erasure branch executes at most once per session.}
   flowchart TD
         A([rx_loop iteration]) --> B{s_sessionActive?}
         B -- No --> Z([Skip - no open session])
@@ -1612,7 +1612,7 @@ No frame body is accumulated until both preamble bytes have been matched in sequ
 
 The combined TX-drain and RX-preamble-hunt desynchronization recovery process is illustrated in .ref {bilateral-desynchronization-recovery}.
 
-.mermaid ref:{bilateral-desynchronization-recovery} caption:{Bilateral desynchronization recovery after a noise burst. The TX node drains its receive FIFO before transmitting; the RX node discards arbitrary garbage bytes until the `0xAA 0x55` preamble is matched.}
+.mermaid ref:{bilateral-desynchronization-recovery} caption:{Bilateral desynchronization recovery after a noise burst. The TX node drains its receive FIFO before transmitting; the RX node discards arbitrary garbage bytes until the 0xAA 0x55 preamble is matched.}
   flowchart TD
         subgraph TX ["TX Node - Active Drain"]
             T1([Enter SENDING_HELLO / SENDING / SENDING_FIN]) --> T2["drainRxFifo() - discard up to 64 stale bytes"]
@@ -1801,7 +1801,7 @@ $$$
 
 so the channel is electrically transparent. The oscilloscope trace exhibits clean, sharp square-wave transitions between 0 V and 5 V, and stable symbol intervals with no bit-level polarity inversions superposed onto the UART stream.
 
-![Oscilloscope capture of a clean DATA transmission](img/fig_11_clean_data_oscilloscope.png "Oscilloscope evidence of baseline operation with $ N(t)=0 $. The XOR injector passes the UART signal unchanged, producing a clean square-wave waveform without attacker-driven inversions.") {#baseline-clean-data-oscilloscope}
+![Oscilloscope capture of a clean DATA transmission](img/fig_11_clean_data_oscilloscope.png "Oscilloscope evidence of baseline operation with the noise path disabled. The XOR injector passes the UART signal unchanged, producing a clean square-wave waveform without attacker-driven inversions.") {#baseline-clean-data-oscilloscope}
 
 At the protocol layer, this physical cleanliness corresponds to a successful framed exchange: Node A emits a complete DATA packet, and Node B responds with an ACK after receiving and executing the decrypted payload. The message flow is summarized in .ref {clean-data-ack-exchange}.
 
@@ -1848,7 +1848,7 @@ and the receiver input becomes an XOR-composed waveform rather than a direct rep
 The .ref {jammed-data-desync-topology} captures the global topology during this attack interval. Node A has advanced to packet (#145) and is observed in a `WAIT ACK` state with two retries already consumed (`RTY: 2`). Node B, however, is still executing the previously authenticated payload corresponding to packet (#144), indicated by `PLAYING SEQ:144 OK`. This simultaneous observation establishes state desynchronization: the transmitter is attempting to deliver the next stop-and-wait DATA frame, while the receiver remains engaged in application-layer execution of the prior command.
 
 .center
-  ![Topology under active jamming during payload delivery](img/fig_16_jammed_data_desync_topology.png "SH2SC-EDT topology under active jamming during payload delivery. Node A is stalled in `WAIT ACK` for `PKT:145` with `RTY:2`, while Node B is still in `PLAYING` state for `SEQ:144 OK`, evidencing protocol-state divergence under interference.") {#jammed-data-desync-topology}
+  ![Topology under active jamming during payload delivery](img/fig_16_jammed_data_desync_topology.png "SH2SC-EDT topology under active jamming during payload delivery. Node A is stalled in WAIT ACK for PKT:145 with RTY:2, while Node B is still in PLAYING state for SEQ:144 OK, evidencing protocol-state divergence under interference.") {#jammed-data-desync-topology}
 
 The physical-layer mechanism driving this divergence is shown in .ref {jammed-data-desync-oscilloscope}. With the attacker enabled, the receiver-side waveform satisfies
 
@@ -1874,9 +1874,9 @@ The protocol-layer manifestation is captured by the logic analyzer in .ref {jamm
 
 The ARQ and application-layer consequences are visible directly on the node displays. .ref {jammed-data-tx-lcd-state} shows Node A stalled on `PKT:145` with `RTY:2` in `WAIT ACK`, confirming that the stop-and-wait retransmission logic is actively attempting to push the same payload packet through a disturbed channel without receiving the required acknowledgement. .ref {jammed-data-rx-lcd-state} shows Node B in `PLAYING` state with `SEQ:144 OK`, confirming that the receiver remains occupied with the prior authenticated command and has not progressed to the subsequent sequence value. Even if Node B were to complete its ongoing execution and resume active listening, the physical and logic-analyzer evidence (.ref {jammed-data-desync-oscilloscope} and .ref {jammed-data-desync-logic-analyzer}) indicates that the incoming attempts for packet (#145) are being shredded at the waveform level during this interval.
 
-![Transmitter LCD state under jamming: PKT 145 with retries](img/fig_19_jammed_data_desync_tx_status.png "Node A status under active jamming. `PKT:145` and `RTY:2` in `WAIT ACK` indicate repeated retransmission attempts without acknowledgement.") {#jammed-data-tx-lcd-state}
+![Transmitter LCD state under jamming: PKT 145 with retries](img/fig_19_jammed_data_desync_tx_status.png "Node A status under active jamming. PKT:145 and RTY:2 in WAIT ACK indicate repeated retransmission attempts without acknowledgement.") {#jammed-data-tx-lcd-state}
 
-![Receiver LCD state under desynchronization: still executing SEQ 144](img/fig_20_jammed_data_desync_rx_status.png "Node B status during the same interval. `PLAYING SEQ:144 OK` indicates ongoing execution of the previous authenticated payload while the transmitter has already advanced to the next packet.") {#jammed-data-rx-lcd-state}
+![Receiver LCD state under desynchronization: still executing SEQ 144](img/fig_20_jammed_data_desync_rx_status.png "Node B status during the same interval. PLAYING SEQ:144 OK indicates ongoing execution of the previous authenticated payload while the transmitter has already advanced to the next packet.") {#jammed-data-rx-lcd-state}
 
 The resulting interaction is summarized in .ref {jammed-data-desync-sequence}. While Node B remains in a prolonged execution window for packet (#144), Node A transmits packet (#145) and enters a `WAIT ACK` state. Each jammed transmission attempt fails to yield a valid acknowledgement, leading to sequential retries.
 
@@ -1905,7 +1905,7 @@ Oscilloscope and logic-analyzer figures are intentionally omitted for this scena
 
 The transmitter-side transition into session suspension and reconnection posture is shown in .ref {tx-session-timeout-topology}.
 
-![Transmitter session timeout and reconnection transition under sustained jamming](img/fig_21_tx_session_timeout_topology.png "Node A enters the session-suspension safeguard after exhausting its retransmission budget. The LCD message `LINK LOST! RECONNECTING...` captures the moment the transmitter abandons the current session and transitions to reconnection logic under prolonged active jamming.") {#tx-session-timeout-topology}
+![Transmitter session timeout and reconnection transition under sustained jamming](img/fig_21_tx_session_timeout_topology.png "Node A enters the session-suspension safeguard after exhausting its retransmission budget. The LCD message LINK LOST! RECONNECTING... captures the moment the transmitter abandons the current session and transitions to reconnection logic under prolonged active jamming.") {#tx-session-timeout-topology}
 
 ### Scenario 6: Mutual Session Teardown and Dead Air
 
@@ -1919,11 +1919,11 @@ Only an oscilloscope capture is included for this intermediate state. Because ne
 
 The .ref {dead-air-topology} provides the global topology view of the dead-air condition. The key observation is that the attacker sub-circuit remains enabled while neither endpoint maintains an active cryptographic session: the transmitter is in reconnection posture, and the receiver has reset the session state after concluding that the link is no longer live.
 
-![Dead-air topology under mutual session teardown](img/fig_22_dead_air_topology.png "Dead-air topology under active jamming after mutual session teardown. The attacker remains enabled while Node A holds `RECONNECTING` posture and Node B has dropped the session after watchdog expiry.") {#dead-air-topology}
+![Dead-air topology under mutual session teardown](img/fig_22_dead_air_topology.png "Dead-air topology under active jamming after mutual session teardown. The attacker remains enabled while Node A holds RECONNECTING posture and Node B has dropped the session after watchdog expiry.") {#dead-air-topology}
 
 The .ref {dead-air-rx-timeout-status} captures the receiver-side evidence of graceful teardown. The LCD message `TIMEOUT! DROP / Session reset` demonstrates that Node B’s fail-safe mechanism has actively discarded the stale session context and cleared its cryptographic state, preventing indefinite retention of a compromised or unreachable session under prolonged jamming.
 
-![Receiver timeout status after session drop](img/fig_23_dead_air_rx_status.png "Node B indicates watchdog-driven session teardown. The LCD message `TIMEOUT! DROP / Session reset` confirms that the receiver has cleared the abandoned session and returned to a safe listening posture under continued channel denial.") {#dead-air-rx-timeout-status}
+![Receiver timeout status after session drop](img/fig_23_dead_air_rx_status.png "Node B indicates watchdog-driven session teardown. The LCD message TIMEOUT! DROP / Session reset confirms that the receiver has cleared the abandoned session and returned to a safe listening posture under continued channel denial.") {#dead-air-rx-timeout-status}
 
 The physics of this dead-air channel is captured by the XOR injection model under an idle transmitter. If the transmitter output is quiescent and held at a constant logic level,
 
@@ -1951,11 +1951,11 @@ On the receiver (Node B), the node remains in the disconnected drop state (`TIME
 
 The .ref {jammed-hello-retry-topology} provides the topology overview of this reconnection interval. The jammer is explicitly active, and both endpoints are in post-teardown conditions: Node A is attempting a new handshake, while Node B is in a fail-safe state that prevents it from acting on unauthenticated or structurally corrupted traffic.
 
-![Topology of jammed session re-initialization attempts](img/fig_25_jammed_hello_retry_topology.png "Topology during session re-initialization attempts under active jamming. The attacker remains enabled while Node A repeatedly transmits `HelloPacket` frames and Node B remains in a dropped session state.") {#jammed-hello-retry-topology}
+![Topology of jammed session re-initialization attempts](img/fig_25_jammed_hello_retry_topology.png "Topology during session re-initialization attempts under active jamming. The attacker remains enabled while Node A repeatedly transmits HelloPacket frames and Node B remains in a dropped session state.") {#jammed-hello-retry-topology}
 
 The .ref {jammed-hello-retry-node-status} ties the reconnection attempt to the explicit FSM-visible state of both nodes. The transmitter display confirms that this is not a continuation of the prior data stream but a new session request (counter reset), and that repeated timeouts have already accumulated. Symmetrically, the receiver display confirms that the watchdog-driven teardown has left the node in a safe disconnected posture until a valid session-open frame can be parsed.
 
-![Node LCD states during repeated HELLO retries under jamming](img/fig_26_jammed_hello_retry_nodes_status.png "Endpoint states under reconnection pressure. Node A displays `PKT:0 RTY:21 WAIT SYN`, confirming a fresh session attempt and repeated retries, while Node B remains in `TIMEOUT! DROP`, indicating that no new session has been admitted.") {#jammed-hello-retry-node-status}
+![Node LCD states during repeated HELLO retries under jamming](img/fig_26_jammed_hello_retry_nodes_status.png "Endpoint states under reconnection pressure. Node A displays PKT:0 RTY:21 WAIT SYN, confirming a fresh session attempt and repeated retries, while Node B remains in TIMEOUT! DROP, indicating that no new session has been admitted.") {#jammed-hello-retry-node-status}
 
 At the physical layer, the transmitter is no longer quiescent as in Scenario 6. Instead, it is actively emitting `HelloPacket` waveforms into a channel that remains dominated by the attacker disturbance process. Under the XOR injection model, the receiver-side signal satisfies
 
@@ -1973,15 +1973,15 @@ $$$
 
 during active transmission: the clean, periodic structure of asynchronous serial bits is repeatedly violated by interference-driven inversions, so the receiver-side waveform no longer preserves the stable per-bit windows required for deterministic decoding.
 
-![Oscilloscope capture of jammed HELLO retransmissions](img/fig_27_jammed_hello_retry_oscilloscope.png "Oscilloscope evidence of `HelloPacket` transmissions under continued jamming. The active handshake waveform is severely distorted by XOR-injected disturbance, preventing stable symbol reconstruction at the receiver input.") {#oscilloscope-capture-of-hello-packets-under-continued-jamming}
+![Oscilloscope capture of jammed HELLO retransmissions](img/fig_27_jammed_hello_retry_oscilloscope.png "Oscilloscope evidence of HelloPacket transmissions under continued jamming. The active handshake waveform is severely distorted by XOR-injected disturbance, preventing stable symbol reconstruction at the receiver input.") {#oscilloscope-capture-of-hello-packets-under-continued-jamming}
 
 The .ref {hello-packet-logic-analyzer-under-jamming} provides protocol-structure validation despite the hostile channel. Relative to the encrypted DATA packets captured earlier in .ref {clean-data-logic-analyzer} and .ref {next-clean-data-logic-analyzer}, the observed frame is shorter in duration, consistent with the `HelloPacket` design (preamble plus a compact session-request body, without the ciphertext-and-MAC tail of a DATA frame). Crucially, the preamble pattern remains visually preserved and invariant across packet types. This invariance is a structural requirement of C2P-ARQ: by fixing the preamble, the receiver parser retains a deterministic synchronization gate even when higher-layer fields are corrupted by noise.
 
-![Logic analyzer capture of jammed HELLO frames: short length, identical preamble](img/fig_28_jammed_hello_retry_logic_analyzer.png "Logic-analyzer view of repeated `HelloPacket` attempts under jamming. The overall frame duration is visibly shorter than the encrypted DATA frames of Scenarios 2 and 3, while the synchronization preamble remains strictly identical, physically validating the C2P-ARQ packet specification.") {#hello-packet-logic-analyzer-under-jamming}
+![Logic analyzer capture of jammed HELLO frames: short length, identical preamble](img/fig_28_jammed_hello_retry_logic_analyzer.png "Logic-analyzer view of repeated HelloPacket attempts under jamming. The overall frame duration is visibly shorter than the encrypted DATA frames of Scenarios 2 and 3, while the synchronization preamble remains strictly identical, physically validating the C2P-ARQ packet specification.") {#hello-packet-logic-analyzer-under-jamming}
 
 The reconnection loop is summarized in .ref {jammed-hello-retry-sequence}. Node A repeatedly transmits `HelloPacket` session requests; each attempt is physically corrupted by ongoing jamming and fails to elicit an acknowledgement, causing an ARQ timeout and an increment of the retry counter. Node B remains disconnected and therefore emits no response until a valid session-open frame is admitted.
 
-.mermaid ref:{jammed-hello-retry-sequence} caption:{Session re-initialization attempts under active jamming. Corrupted `HelloPacket` transmissions fail to produce an ACK, forcing Node A to loop in `WAIT SYN` with an increasing retry counter while Node B remains safely dropped.}
+.mermaid ref:{jammed-hello-retry-sequence} caption:{Session re-initialization attempts under active jamming. Corrupted HelloPacket transmissions fail to produce an ACK, forcing Node A to loop in WAIT SYN with an increasing retry counter while Node B remains safely dropped.}
   sequenceDiagram
     participant A as Node A (TX)
     participant B as Node B (RX)
@@ -2009,10 +2009,10 @@ The topology overview at the moment recovery is achieved is shown in .ref {recov
 The endpoint LCDs in .ref {recovery-success-tx-status} and .ref {recovery-success-rx-status} confirm that end-to-end synchronization has been restored under the newly established session. Node A reports that it is processing the 19th packet of the new session (`PKT: 19 WAIT NOTE`), while Node B confirms authenticated progress to the same point (`PLAYING SEQ: 19 OK`). This alignment indicates that both the handshake and the subsequent DATA stream are being decoded and acknowledged consistently.
 
 .center
-  ![Transmitter status after recovery: PKT 19 in normal operation](img/fig_30_recovery_success_tx_status.png "Node A status after successful recovery. `PKT: 19` indicates forward progress within the new session, and `WAIT NOTE` indicates normal inter-packet pacing has resumed.") {#recovery-success-tx-status}
+  ![Transmitter status after recovery: PKT 19 in normal operation](img/fig_30_recovery_success_tx_status.png "Node A status after successful recovery. PKT: 19 indicates forward progress within the new session, and WAIT NOTE indicates normal inter-packet pacing has resumed.") {#recovery-success-tx-status}
 
 .center
-  ![Receiver status after recovery: PLAYING SEQ 19 OK](img/fig_31_recovery_success_rx_status.png "Node B status after successful recovery. `PLAYING SEQ: 19 OK` confirms authenticated reception and application-layer execution at the synchronized sequence position.") {#recovery-success-rx-status}
+  ![Receiver status after recovery: PLAYING SEQ 19 OK](img/fig_31_recovery_success_rx_status.png "Node B status after successful recovery. PLAYING SEQ: 19 OK confirms authenticated reception and application-layer execution at the synchronized sequence position.") {#recovery-success-rx-status}
 
 This observation captures the central architectural separation in SH2SC-EDT: the Link/Session Layer is deliberately ephemeral and may be re-initialized, while the Application Layer payload stream is stateful and persistent. Because a new cryptographic session is established, the packet sequence numbers are re-started from zero to preserve nonce integrity for ChaCha20-Poly1305 under the fresh session context. However, the application payload state does not reset: the melody execution resumes from the exact note at which the prior session was severed, ensuring zero data loss despite the prolonged outage.
 
@@ -2025,7 +2025,7 @@ $$$
 so the forward channel is electrically transparent in the absence of attacker disturbance.
 
 .center
-  ![Oscilloscope capture proving the clear channel after jamming ceases](img/fig_32_recovery_success_oscilloscope.png "Oscilloscope evidence of recovery. With $ N(t)=0 $, the XOR stage passes the transmitter UART waveform without inversion, confirming that the medium is free of adversarial interference.") {#recovery-success-oscilloscope}
+  ![Oscilloscope capture proving the clear channel after jamming ceases](img/fig_32_recovery_success_oscilloscope.png "Oscilloscope evidence of recovery. With the noise path disabled, the XOR stage passes the transmitter UART waveform without inversion, confirming that the medium is free of adversarial interference.") {#recovery-success-oscilloscope}
 
 At the protocol layer, .ref {recovery-success-logic-analyzer} shows a clean, uninterrupted data frame consistent with successful framing and decoding. In contrast to the jammed traces of Scenarios 4 and 7, the captured stream preserves stable structure across the entire frame, confirming that recovery is not merely a local FSM transition but an end-to-end restoration of the transport exchange.
 
@@ -2064,11 +2064,11 @@ The .ref {final-session-closure-topology} provides the topology overview at the 
 
 The transmitter post-session LCD state is shown in .ref {transmitter-post-session-idle-state}.
 
-![Transmitter post-session status: IDLE](img/fig_35_session_closed_tx_status.png "Node A post-session state. `PKT: 0 IDLE` indicates that the transmitter has completed the final authenticated exchange and returned to its terminal idle posture.") {#transmitter-post-session-idle-state}
+![Transmitter post-session status: IDLE](img/fig_35_session_closed_tx_status.png "Node A post-session state. PKT: 0 IDLE indicates that the transmitter has completed the final authenticated exchange and returned to its terminal idle posture.") {#transmitter-post-session-idle-state}
 
 The receiver post-session LCD state is shown in .ref {receiver-post-session-closed-state}.
 
-![Receiver post-session status: SESSION CLOSED with total sequence count](img/fig_36_session_closed_rx_status.png "Node B post-session state. `SESSION CLOSED SEQ: 275` confirms legitimate termination and reports the total number of authenticated payload chunks executed during the session.") {#receiver-post-session-closed-state}
+![Receiver post-session status: SESSION CLOSED with total sequence count](img/fig_36_session_closed_rx_status.png "Node B post-session state. SESSION CLOSED SEQ: 275 confirms legitimate termination and reports the total number of authenticated payload chunks executed during the session.") {#receiver-post-session-closed-state}
 
 The physical-layer quiescence of the post-session channel is captured by the oscilloscope in .ref {post-session-dead-channel-oscilloscope}. With no transmission activity and no attacker disturbance, the line satisfies
 
@@ -2078,7 +2078,7 @@ $$$
 
 so the receiver-side input collapses to a flatline consistent with a legitimate end of communication.
 
-![Oscilloscope flatline after session termination](img/fig_37_session_closed_oscilloscope.png "Oscilloscope evidence of a dead channel after legitimate teardown. The flatline is consistent with $ S_{rx}(t)=0 $ under the no-transmission, no-noise condition.") {#post-session-dead-channel-oscilloscope}
+![Oscilloscope flatline after session termination](img/fig_37_session_closed_oscilloscope.png "Oscilloscope evidence of a dead channel after legitimate teardown. The flatline is consistent with a zero-level receive line under the no-transmission, no-noise condition.") {#post-session-dead-channel-oscilloscope}
 
 The protocol-side security property of this termination mechanism is exposed most clearly by the logic analyzer in .ref {final-terminating-frame-logic-analyzer}. The final packet is intentionally emitted as a full-sized frame that structurally mimics a standard encrypted data packet: it begins with the identical synchronization preamble, and its on-wire duration matches the normal data-frame footprint. This design eliminates a trivial traffic-analysis oracle based on packet-size heuristics: an eavesdropper observing only frame lengths cannot infer that a session has ended merely because a shorter terminating frame appears. Instead, the termination command is expressed inside the encrypted payload and is therefore visible only to an authenticated endpoint.
 
