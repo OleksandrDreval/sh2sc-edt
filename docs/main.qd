@@ -288,7 +288,7 @@
 
 The proliferation of low-cost wireless IoT devices has created infrastructure that is reliant on COTS radio modules never designed to operate in adversarial environments. These modules implement only lower-layer protocol functions, delegating session management, integrity verification, and confidentiality entirely to the application developer — a delegation that is routinely omitted in resource-constrained deployments. SH2SC-EDT addresses this structural gap by co-designing the physical transmission substrate with a dedicated session-layer protocol, C2P-ARQ, that integrates ChaCha20-Poly1305 authenticated encryption as a first-class primitive rather than an optional extension.
 
-## The Vulnerability Landscape of COTS RF Modules
+## The Vulnerability Landscape of COTS RF Modules {#sec-1-1-vulnerability-landscape-of-cots-rf-modules}
 
 COTS sub-GHz transceivers (e.g., Si446x, CC1101, RFM69HW) implement the PHY layer — modulation, forward error correction, and RSSI measurement — and a rudimentary MAC layer providing address filtering and CRC-16 frame validation. Their hardware-defined protocol stack terminates at the link layer. No concept of a session, sequence-number binding, or cryptographic authentication exists below the application boundary; the transceiver is structurally blind to session state.
 
@@ -308,7 +308,7 @@ COTS modules expose no transport-layer state machine. A single noise burst suffi
 
 These vulnerabilities are not implementation defects in any particular product; they are a direct structural consequence of the OSI layer boundary at which COTS module firmware terminates. Addressing them requires an explicit transport-layer protocol that mandates AEAD per packet, manages session nonces, and provides deterministic desynchronization recovery — the precise function set that C2P-ARQ supplies.
 
-## The Jamming Threat and Synchronization Loss
+## The Jamming Threat and Synchronization Loss {#sec-1-2-jamming-threat-and-synchronization-loss}
 
 Active RF jamming is not a passive environmental phenomenon but a deliberate attack on the physical layer: an adversary transmits an interfering signal on the target frequency band, elevating the noise floor above the receiver sensitivity threshold. The immediate effect at the PHY layer is a bit-error rate increase that systematically exceeds the correction capacity of any employed FEC scheme, producing a continuous stream of CRC failures. Unlike multipath fading or thermal noise — which corrupt frames probabilistically and intermittently — a sustained jamming signal renders the channel deterministically unusable for its duration. Packet drop rates approach 100% under full-power jamming regardless of retransmission policy, because the corruption occurs prior to any ARQ layer visibility.
 
@@ -318,7 +318,7 @@ In COTS-based deployments lacking a defined session-recovery mechanism, this sta
 
 ## Our Contribution: The SH2SC-EDT Architecture
 
-This paper presents SH2SC-EDT, a hardware-software complex and its transport engine C2P-ARQ, designed to eliminate the three vulnerability classes identified in Section 1.1 and the deadlock condition described in Section 1.2. The architecture rests on three co-designed pillars that collectively transform an unprotected, stateless radio link into a fault-tolerant, cryptographically authenticated session channel.
+This paper presents SH2SC-EDT, a hardware-software complex and its transport engine C2P-ARQ, designed to eliminate the three vulnerability classes identified in .ref {sec-1-1-vulnerability-landscape-of-cots-rf-modules} and the deadlock condition described in .ref {sec-1-2-jamming-threat-and-synchronization-loss}. The architecture rests on three co-designed pillars that collectively transform an unprotected, stateless radio link into a fault-tolerant, cryptographically authenticated session channel.
 
 ### Integrated Authenticated Encryption per Packet
 
@@ -369,7 +369,7 @@ The buzzer output on the receiver node constitutes an always-on, zero-instrument
 
 The melody transmission scenario represents the hardest case within a class of streaming, time-sensitive payloads. The C2P-ARQ wire format is payload-agnostic: the `(note_index, duration_ms)` pair occupies the same four encrypted bytes that would carry any `(command_id, parameter)` pair in a production IoT deployment. If the protocol sustains correct, ordered, authenticated delivery under sustained jamming with a heterogeneous timing profile, its correctness under a simpler discrete-command workload follows directly. The migration from melody notes to actuator commands requires zero protocol-layer modifications.
 
-## The "Fat Server / Thin Client" Paradigm
+## The "Fat Server / Thin Client" Paradigm {#sec-2-2-fat-server-thin-client-paradigm}
 
 C2P-ARQ deliberately concentrates the entire state burden of the session on the transmitter node. The transmitter — designated Node A — owns the melody array in `PROGMEM`, maintains the current `melodyIndex`, drives the full nine-state FSM lifecycle from `IDLE` through `WAITING_FIN_ACK`, executes `suspendSession()` on link failure, and manages `retryCount`, `seqNum`, all `millis()`-based timeout comparisons, and the reconnection interval. This asymmetric complexity allocation is not a consequence of implementation convenience but a deliberate protocol-level design choice: in any point-to-point ARQ system, exactly one endpoint must own the authoritative progress state. Placing that state on the transmitter confines the surface area of session logic to a single node and makes the receiver structurally stateless with respect to payload progress.
 
@@ -399,7 +399,7 @@ This design provides temporal determinism as a first-class property: at any poin
 
 SH2SC-EDT was designed from inception to be validated within a fully reproducible simulation environment. Every physical component — the UART channel, the I2C bus, the piezo buzzer, the entropy ring oscillator, and the XOR noise injector — is modelled in SimulIDE, a real-time electronic circuit simulator, enabling rigorously repeatable fault-tolerance experiments without access to physical hardware. All timing constants, baud-rate settings, and MAC verification results presented in this paper were obtained directly from this simulation; no post-hoc calibration or parameter tuning was performed outside the simulation environment.
 
-## The SimulIDE Testbed: Topology and Physical Layer Abstraction
+## The SimulIDE Testbed: Topology and Physical Layer Abstraction {#sec-3-1-simulide-testbed-topology-and-physical-layer-abstraction}
 
 The SH2SC-EDT simulation topology comprises two microcontroller nodes and an Attacker sub-circuit, as shown in .ref {full-simulation-topology-in-simulide}. Node A (Transmitter, "The Conductor") is an ATmega328P-based Arduino Nano responsible for the entire C2P-ARQ session lifecycle: it owns the `PROGMEM` melody table, maintains the authoritative `melodyIndex`, drives the nine-state transmitter FSM from `IDLE` through `WAITING_FIN_ACK`, and executes `suspendSession()` on link failure. Node B (Receiver, "The Synthesizer") is a second Arduino Nano that holds only the 21-entry universal note-frequency dictionary and the 12-byte session nonce; it is intentionally stateless with respect to melody progress. The Attacker is a hardware-only sub-circuit — it is not a microcontroller, not a third node, and not a firmware entity. It consists of an XOR gate, a 1 kHz Pulse Generator with 15% duty cycle, an AND gate, and a manual Switch, wired in series on the UART data line between Node A and Node B.
 
@@ -413,7 +413,7 @@ The SH2SC-EDT simulation topology comprises two microcontroller nodes and an Att
 
 SimulIDE provides no RF propagation model. The physical layer is accordingly abstracted as a point-to-point UART digital bus operating at 9600 bps (8N1). This abstraction is not a limitation but a deliberate design choice: by removing RF-layer complexity — multipath, frequency-selective fading, antenna gain patterns — the experiment isolates the protocol layer as the sole variable under test. The UART bus carries two unidirectional channels, as shown in .ref {uart-asymmetric-channel-topology-section-3-1}. The data channel, routed from Node A TX to Node B RX, passes through the Attacker XOR gate: with the noise Switch open, the XOR output equals the original signal; with the Switch closed, the Pulse Generator's 1 kHz rectangular waveform is XORed onto the bus, flipping individual UART bits and producing realistic partial-frame corruption. At 9600 bps, a single UART bit spans approximately 104 µs; a 150 µs noise pulse (15% of a 1000 µs period) is therefore wide enough to corrupt one to nine consecutive bits per burst without destroying every bit in every frame — producing the probabilistic packet-error distribution that the C2P-ARQ ARQ layer is designed to survive. The feedback channel, running from Node B TX to Node A RX, is a clean, unattacked direct wire. It carries only single-byte control frames: `ACK_BYTE = 0x06` on successful Poly1305 verification, and `NACK_BYTE = 0x15` on MAC failure.
 
-.mermaid ref:{uart-asymmetric-channel-topology-section-3-1} caption:{UART asymmetric channel topology in Section 3.1. The forward data channel passes through the XOR noise injector, while the reverse feedback channel remains a clean direct wire.}
+.mermaid ref:{uart-asymmetric-channel-topology-section-3-1} caption:{UART asymmetric channel topology in .ref {sec-3-1-simulide-testbed-topology-and-physical-layer-abstraction}. The forward data channel passes through the XOR noise injector, while the reverse feedback channel remains a clean direct wire.}
   graph LR
     A["Node A TX (Transmitter)"] -->|"Data channel\n[XOR noise injector]"| B["Node B RX (Receiver)"]
     C["Node B TX (Receiver)"] -->|"Feedback channel\n[Clean wire]"| D["Node A RX (Transmitter)"]
@@ -426,11 +426,11 @@ Both legitimate nodes share an identical digital processing core. The computatio
 
 Both nodes are equipped with an Aip31068 16×2 I2C LCD display connected via the hardware I2C bus (pins A4/A5, address `0x3E`). The display is not a cosmetic decoration but a critical out-of-band diagnostic instrument. Because the I2C writes are performed from within FSM state-transition code — rather than in a dedicated blocking display loop — the LCD reflects the current protocol state in real time without introducing latency into the main execution path. On Node A, the top row shows `PKT:<seqNum>  RTY:<retryCount>` and the bottom row shows the active FSM state label (`SENDING`, `WAITING_ACK`, `RECONNECTING`, etc.). On Node B, the top row displays the FSM state and the bottom row shows `SEQ:<n> OK` or `SEQ:<n> MAC!` after each validated or rejected frame. This continuous, human-readable state display allows a complete visual verification of the C2P-ARQ session lifecycle — handshake, data transfer, retransmission storms, self-healing reconnection, and authenticated teardown — without attaching a logic analyser or serial monitor. In the context of academic validation, the LCD constitutes a synchronised, unambiguous ground-truth channel for protocol-state observation.
 
-Both nodes additionally incorporate a hardware entropy sub-circuit for TRNG seeding. The architecture and entropy mixing strategy of this sub-circuit are examined in detail in Section 4.
+Both nodes additionally incorporate a hardware entropy sub-circuit for TRNG seeding. The architecture and entropy mixing strategy of this sub-circuit are examined in detail in .ref {sec-4-trng-entropy-management}.
 
 ## Node Asymmetry: Interrupt-Driven TX and PWM-Driven RX
 
-Beyond the shared computing core, the two nodes differ in their peripheral complement, and these hardware differences are a direct physical expression of the Fat Server / Thin Client asymmetry described in Section 2.2.
+Beyond the shared computing core, the two nodes differ in their peripheral complement, and these hardware differences are a direct physical expression of the Fat Server / Thin Client asymmetry described in .ref {sec-2-2-fat-server-thin-client-paradigm}.
 
 ### Transmitter (Node A)
 
@@ -444,7 +444,7 @@ Node B is the execution endpoint and produces no protocol control signals beyond
 
 ![Receiver (Node B) hardware architecture in SimulIDE](img/fig_03_receiver_node_architecture.png "Receiver (Node B) hardware architecture in SimulIDE. Peripherals: Aip31068 I2C LCD (A4/A5), Ring-Oscillator TRNG sub-circuit (INT0/pin 2), Noise Wave Generator sub-circuit, and the piezoelectric speaker (PWM pin 9).") {#receiver-node-b-hardware-architecture-in-simulide}
 
-# True Random Number Generation (TRNG) & Entropy Management
+# True Random Number Generation (TRNG) & Entropy Management {#sec-4-trng-entropy-management}
 
 The cryptographic security of C2P-ARQ rests on a single, non-negotiable requirement: every session nonce must be drawn from a source of genuine physical randomness. This requirement is not a matter of implementation preference but a formal security constraint imposed by the AEAD construction itself. ChaCha20-Poly1305 is an IND-CPA-secure cipher under the assumption that no nonce is ever reused under the same key. Formally, for a 96-bit nonce space and a 256-bit key $ K $, any two encryptions become insecure if the nonce is reused:
 
@@ -478,7 +478,7 @@ denotes the encryption of message $ m $ under key $ K $ and nonce $ N $, and $ \
 
 Software PRNGs are structurally insufficient as a standalone entropy source for this purpose. A linear-congruential generator or an xorshift PRNG produces a deterministic sequence parameterised entirely by its initial seed. On an embedded node that is power-cycled between sessions — a routine operational event — any seed derived from a compile-time constant, an uninitialized SRAM snapshot alone, or a fixed ADC reading will reproduce the same seed on each boot, and therefore the same first nonce. C2P-ARQ requires a Cryptographically Secure Pseudo-Random Number Generator (CSPRNG) whose seed incorporates genuine physical entropy — bit-level randomness sourced from unpredictable physical processes that are statistically independent of all prior state, all boot history, and all adversarial observation.
 
-## Hardware Entropy Sources
+## Hardware Entropy Sources {#sec-4-1-hardware-entropy-sources}
 
 Physical randomness in SH2SC-EDT is harvested by `generateEntropyPool()`, a one-shot function invoked once during node initialisation (`setup()` on TX, `rx_setup()` on RX) that fills a 32-byte seed buffer by executing eight sequential word iterations. In each iteration, multiple physically independent sources are folded into a 32-bit accumulator via a rotate-XOR sponge; the resulting word is written as four little-endian bytes into the output buffer. The total blocking cost is therefore:
 
@@ -554,9 +554,9 @@ $$$
 
 bits across the 32-byte seed.
 
-## The Cryptographic Entropy Blender
+## The Cryptographic Entropy Blender {#sec-4-2-cryptographic-entropy-blender}
 
-The raw bit contributions harvested from the seven physical sources described in Section 4.1 cannot feed directly into the ChaCha20 engine as a key. Two structural deficiencies preclude it. First, every source introduces independent statistical bias: ring-oscillator edge counts cluster around a device-specific mean, ADC LSBs exhibit hardware-dependent 0/1 imbalance, and the `random()` term is wholly deterministic. Second, folding an arbitrary number of input bits into a 32-bit accumulator cannot raise that word's entropy above 32 bits — the actual budget is bounded by the dominant physical source alone. `initCSPRNG()` resolves both deficiencies through a two-stage blending pipeline executed immediately after `generateEntropyPool()` returns.
+The raw bit contributions harvested from the seven physical sources described in .ref {sec-4-1-hardware-entropy-sources} cannot feed directly into the ChaCha20 engine as a key. Two structural deficiencies preclude it. First, every source introduces independent statistical bias: ring-oscillator edge counts cluster around a device-specific mean, ADC LSBs exhibit hardware-dependent 0/1 imbalance, and the `random()` term is wholly deterministic. Second, folding an arbitrary number of input bits into a 32-bit accumulator cannot raise that word's entropy above 32 bits — the actual budget is bounded by the dominant physical source alone. `initCSPRNG()` resolves both deficiencies through a two-stage blending pipeline executed immediately after `generateEntropyPool()` returns.
 
 ### Stage 1 — The Rotate-XOR Sponge
 
@@ -660,7 +660,7 @@ The cache refill completes in approximately 100 µs at 16 MHz — one ChaCha20 b
 
 The 16 ms blocking cost incurred by `generateEntropyPool()` — eight sequential 2 ms ring-oscillator gate windows with synchronous ADC and SRAM reads — is architecturally safe because of when it executes. Both `tx_setup()` and `rx_setup()` call `generateEntropyPool()` after `Serial.begin()` but before the first `loop()` invocation. At that point the UART hardware is initialised but no packet traffic can arrive: no C2P-ARQ session is open, no FSM state requires timeout supervision, and no UART byte is expected on the receive buffer. The 16 ms expenditure is therefore front-loaded entirely into the MCU's initialisation phase and has no impact on any protocol timing guarantee.
 
-After `initCSPRNG()` returns, the ring-oscillator ISR `onRingOscPulse()` is not re-attached and the ADC hardware is not placed in free-running mode. All physical entropy sources used during `generateEntropyPool()` are fully released: INT0 is unused, ADC channel 8 reverts to its saved `ADMUX` state, and A0 is available for any analogue use. There is no background entropy accumulation during active protocol operation. The CSPRNG from this point forward operates as a deterministic ChaCha20 counter-mode keystream seeded from the one-time boot harvest $ K_{\text{hw}} $, as described in Section 4.2.
+After `initCSPRNG()` returns, the ring-oscillator ISR `onRingOscPulse()` is not re-attached and the ADC hardware is not placed in free-running mode. All physical entropy sources used during `generateEntropyPool()` are fully released: INT0 is unused, ADC channel 8 reverts to its saved `ADMUX` state, and A0 is available for any analogue use. There is no background entropy accumulation during active protocol operation. The CSPRNG from this point forward operates as a deterministic ChaCha20 counter-mode keystream seeded from the one-time boot harvest $ K_{\text{hw}} $, as described in .ref {sec-4-2-cryptographic-entropy-blender}.
 
 The only entropy consumer during runtime is `sendHelloPacket()`, which calls `getSecureRandom32()` three times in succession to fill the 12-byte session nonce `s_sessionNonce`. This function is invoked exclusively from `TxState::SENDING_HELLO` — a brief transitional state that executes once per session SYN handshake and once per auto-reconnect attempt. The nonce derivation therefore occurs precisely when a new session key is needed and at no other time. The receiver node does not call `getSecureRandom32()` at any point during protocol operation; its CSPRNG is seeded at boot for potential future use but is not consumed by the C2P-ARQ receive path.
 
@@ -676,7 +676,7 @@ $$$
 
 without inverting ChaCha20, satisfying backward secrecy. An adversary who captures the current CSPRNG state cannot predict any future nonce if the ChaCha20 counter has advanced — a property guaranteed by the counter-mode construction.
 
-# The C2P-ARQ Protocol Specification
+# The C2P-ARQ Protocol Specification {#sec-5-c2p-arq-protocol-specification}
 
 C2P-ARQ is a custom stateful session-layer protocol that simultaneously provides reliable ordered delivery over an unreliable, bit-corrupting physical channel; per-packet authenticated encryption that prevents replay, injection, and silent tampering; a three-phase session lifecycle that maintains consistent cryptographic state between transmitter and receiver; and automatic session recovery that resumes payload delivery after link failure without operator intervention. The entire protocol stack executes within the 2 KB SRAM budget of a 16 MHz ATmega328P microcontroller, a constraint that prohibits dynamic memory allocation, heap-resident session tables, and retransmit queues of unbounded depth. All protocol state is declared statically at compile time with sizes known to the compiler.
 
@@ -686,9 +686,9 @@ $$$
 50 \times 50 = 2500\,\text{ms}
 $$$
 
-This value is deliberately chosen to fall below the 3000 ms grace period of the receiver's Smart Dynamic Watchdog (Section 7.2).
+This value is deliberately chosen to fall below the 3000 ms grace period of the receiver's Smart Dynamic Watchdog (.ref {sec-7-2-smart-dynamic-watchdog-payload-aware-timeout-adaptation}).
 
-The asymmetric channel model is a defining structural property of C2P-ARQ, as shown in .ref {uart-asymmetric-channel-topology}. The forward data channel, routed from Node A TX to Node B RX, passes through the XOR noise injector and is subject to arbitrary bit-flip bursts; the feedback channel, running from Node B TX to Node A RX, is a direct, noiseless wire carrying only `ACK_BYTE` (0x06) and `NACK_BYTE` (0x15). Reliability decisions — whether to accept a frame, retransmit, or suspend the session — are therefore made on clean signal regardless of the noise level on the forward path. The subsections that follow specify the three-phase lifecycle (Section 5.1), the on-wire packet formats (Section 5.2), and the acknowledgement and retry-limit mechanism (Section 5.3).
+The asymmetric channel model is a defining structural property of C2P-ARQ, as shown in .ref {uart-asymmetric-channel-topology}. The forward data channel, routed from Node A TX to Node B RX, passes through the XOR noise injector and is subject to arbitrary bit-flip bursts; the feedback channel, running from Node B TX to Node A RX, is a direct, noiseless wire carrying only `ACK_BYTE` (0x06) and `NACK_BYTE` (0x15). Reliability decisions — whether to accept a frame, retransmit, or suspend the session — are therefore made on clean signal regardless of the noise level on the forward path. The subsections that follow specify the three-phase lifecycle (.ref {sec-5-1-session-lifecycle-handshake-syn-data-transfer-dat-teardown-fin}), the on-wire packet formats (.ref {sec-5-2-wire-format-hellopacket-and-datapacket-structures}), and the acknowledgement and retry-limit mechanism (.ref {sec-5-3-acknowledgement-mechanism-and-runaway-retry-prevention}).
 
 .mermaid ref:{uart-asymmetric-channel-topology} caption:{C2P-ARQ asymmetric UART channel topology in the SimulIDE testbed. The data channel is subject to XOR bit-flip corruption; the feedback channel carrying `ACK_BYTE` and `NACK_BYTE` is a direct, unattacked wire.}
     graph LR
@@ -696,11 +696,11 @@ The asymmetric channel model is a defining structural property of C2P-ARQ, as sh
         A["Node A TX (Transmitter)"] -->|"Forward channel\n[Noisy — XOR injector]"| B["Node B RX (Receiver)"]
         C["Node B TX (Receiver)"] -->|"Feedback channel\n[Clean — direct wire]"| D["Node A RX (Transmitter)"]
 
-## Session Lifecycle: Handshake (SYN), Data Transfer (DAT), Teardown (FIN)
+## Session Lifecycle: Handshake (SYN), Data Transfer (DAT), Teardown (FIN) {#sec-5-1-session-lifecycle-handshake-syn-data-transfer-dat-teardown-fin}
 
 The C2P-ARQ session lifecycle comprises three strictly sequenced phases. The SYN handshake establishes shared cryptographic state by delivering the CSPRNG-generated 96-bit session nonce from transmitter to receiver; this nonce determines every per-packet IV for the duration of the session and is therefore the sole state that both endpoints must agree on before data transfer can begin. The DAT transfer phase delivers the ordered payload sequence under Stop-and-Wait ARQ, with each frame independently authenticated by a Poly1305 MAC whose tag covers both the ciphertext and the 3-byte plaintext header. The FIN teardown authenticates the session boundary and triggers immediate, symmetric nonce erasure on both nodes, establishing forward secrecy for all ciphertext captured during the session.
 
-### SYN Handshake
+### SYN Handshake {#sec-5-1-1-syn-handshake}
 
 The SYN phase synchronises cryptographic state between the two nodes. Its single deliverable is the 12-byte session nonce, generated on the transmitter and replicated on the receiver.
 
@@ -730,7 +730,7 @@ On receiving `ACK_BYTE` in `TxState::WAITING_HELLO_ACK`, the transmitter transit
 
 The session nonce $ N_s $ is transmitted in cleartext because it is not secret: it functions as a public IV whose sole purpose is to guarantee semantic security — encrypting the same note index twice under the same session produces distinct ciphertext. The confidentiality of the session rests entirely on `MASTER_PSK`, which is compiled into both firmware images and never transmitted over any channel.
 
-### DAT Transfer Phase
+### DAT Transfer Phase {#sec-5-1-2-dat-transfer-phase}
 
 The DAT phase implements Stop-and-Wait ARQ with full ChaCha20-Poly1305 AEAD per packet. Its central invariant is the seqNum binding: every packet that reaches the receiver carries a unique `seqNum`, and the per-packet nonce is derived deterministically from that `seqNum` — ensuring that the AEAD context is never reused across any two successfully acknowledged frames within a single session.
 
@@ -774,7 +774,7 @@ All 65 536 sequence-number values therefore produce distinct per-packet nonces w
 
 #### AEAD Pipeline
 
-In `TxState::SENDING`, `sendPacket()` executes the following pipeline: (1) `s_cipher.clear()`, `s_cipher.setKey(MASTER_PSK, 32)`, `s_cipher.setIV(packetNonce, 12)`; (2) `s_cipher.addAuthData({FLAG_DAT, seq_lo, seq_hi}, 3)`, which hashes the three-byte plaintext header into the Poly1305 accumulator without encrypting it; (3) `s_cipher.encrypt(plaintext, ciphertext, 4)`, encrypting the four-byte payload `{note_index, duration_ms}`; (4) `s_cipher.computeTag(fullMac, 16)`, of which only the first 8 bytes (`TRUNCATED_MAC_SIZE = 8`) are appended to the `DataPacket.mac` field and transmitted. The symmetric pipeline executes on the receiver inside `authenticateAndPlay()`, with `decrypt()` followed by `computeTag()` and a constant-time `memcmp` against the received 8-byte tag; `startNote()` is invoked only after `memcmp` returns zero. Binding the flag byte and both bytes of `seq_num` to the AAD means that any single-bit noise burst affecting either field produces a guaranteed MAC failure regardless of the ciphertext content. The full wire format of `DataPacket` is specified in Section 5.2.
+In `TxState::SENDING`, `sendPacket()` executes the following pipeline: (1) `s_cipher.clear()`, `s_cipher.setKey(MASTER_PSK, 32)`, `s_cipher.setIV(packetNonce, 12)`; (2) `s_cipher.addAuthData({FLAG_DAT, seq_lo, seq_hi}, 3)`, which hashes the three-byte plaintext header into the Poly1305 accumulator without encrypting it; (3) `s_cipher.encrypt(plaintext, ciphertext, 4)`, encrypting the four-byte payload `{note_index, duration_ms}`; (4) `s_cipher.computeTag(fullMac, 16)`, of which only the first 8 bytes (`TRUNCATED_MAC_SIZE = 8`) are appended to the `DataPacket.mac` field and transmitted. The symmetric pipeline executes on the receiver inside `authenticateAndPlay()`, with `decrypt()` followed by `computeTag()` and a constant-time `memcmp` against the received 8-byte tag; `startNote()` is invoked only after `memcmp` returns zero. Binding the flag byte and both bytes of `seq_num` to the AAD means that any single-bit noise burst affecting either field produces a guaranteed MAC failure regardless of the ciphertext content. The full wire format of `DataPacket` is specified in .ref {sec-5-2-wire-format-hellopacket-and-datapacket-structures}.
 
 #### Acknowledgement and seqNum Advancement
 
@@ -788,7 +788,7 @@ When `TxState::WAIT_BETWEEN_NOTES` detects that all notes have been acknowledged
 
 On the receiver, `processFinPacket()` runs the identical AEAD pipeline. A structural requirement of the ChaCha20-Poly1305 construction is that `decrypt()` must be called before `computeTag()` even when the plaintext is discarded: the Poly1305 accumulator ingests ciphertext bytes as a side effect of `decrypt()`; omitting the call leaves the accumulator in an incorrect intermediate state and produces a false MAC mismatch for a legitimate FIN. The `processFinPacket()` implementation satisfies this requirement by decrypting the four zero bytes into a local `discardBuf[DATA_PAYLOAD_SIZE]` array before calling `computeTag()`.
 
-On MAC success, the receiver (1) writes `ACK_BYTE` to `Serial`, (2) calls `memset(s_sessionNonce, 0, HELLO_NONCE_SIZE)`, (3) sets `s_sessionActive = false`, and (4) calls `resetParser()`. On receiving `ACK_BYTE` in `TxState::WAITING_FIN_ACK`, the transmitter (1) calls `memset(s_sessionNonce, 0, HELLO_NONCE_SIZE)` symmetrically, (2) resets `melodyIndex = 0` and `seqNum = 0`, and (3) transitions to `TxState::IDLE`. After teardown, the only persistent secret material in the system is `MASTER_PSK` — compiled into both firmware images and never transmitted, logged, or displayed on any output channel. Neither node retains the session nonce, and no ciphertext block captured from the completed session can be reopened without knowledge of `MASTER_PSK`. The formal security and forward-secrecy properties of nonce erasure are analysed in Section 6.3.
+On MAC success, the receiver (1) writes `ACK_BYTE` to `Serial`, (2) calls `memset(s_sessionNonce, 0, HELLO_NONCE_SIZE)`, (3) sets `s_sessionActive = false`, and (4) calls `resetParser()`. On receiving `ACK_BYTE` in `TxState::WAITING_FIN_ACK`, the transmitter (1) calls `memset(s_sessionNonce, 0, HELLO_NONCE_SIZE)` symmetrically, (2) resets `melodyIndex = 0` and `seqNum = 0`, and (3) transitions to `TxState::IDLE`. After teardown, the only persistent secret material in the system is `MASTER_PSK` — compiled into both firmware images and never transmitted, logged, or displayed on any output channel. Neither node retains the session nonce, and no ciphertext block captured from the completed session can be reopened without knowledge of `MASTER_PSK`. The formal security and forward-secrecy properties of nonce erasure are analysed in .ref {sec-6-3-key-zeroization-and-secure-memory-management}.
 
 ### Complete Session Sequence Diagram
 
@@ -825,7 +825,7 @@ The full C2P-ARQ session lifecycle is shown in .ref {complete-c2p-arq-session-li
         RX-->>TX: ACK_BYTE 0x06
         Note over TX: memset(nonce, 0) -> IDLE
 
-## Wire Format: HelloPacket and DataPacket Structures
+## Wire Format: HelloPacket and DataPacket Structures {#sec-5-2-wire-format-hellopacket-and-datapacket-structures}
 
 All C2P-ARQ frames share a two-byte synchronisation preamble — `SYNC_BYTE_1 = 0xAA` followed by `SYNC_BYTE_2 = 0x55` — prepended to every packet on the forward data channel. The preamble is not a member field of either packet struct; the transmitter emits it via two explicit `Serial.write()` calls immediately before writing the packed struct body, and the receiver's byte-level parser uses the `WAIT_AA` — `WAIT_55` state pair, as shown in .ref {syn-handshake-admission-path}, to regain frame-boundary alignment after any noise-induced desynchronisation. The use of two distinct non-complementary bytes — rather than a single repeated byte — reduces the false-lock rate: the 16-bit pattern `0xAA55` cannot arise from a single bit inversion of either `0xAAAA` or `0x5555`, preventing isolated noise pulses from producing spurious frame-boundary locks.
 
@@ -862,7 +862,7 @@ The `nonce[12]` field is regenerated on every `sendHelloPacket()` invocation, in
 
 The `DataPacket` struct is a packed 15-byte body, preceded by the 2-byte preamble, for a total of 17 bytes on the wire. It is used for both `FLAG_DAT = 0x02` (data transfer) and `FLAG_FIN = 0x04` (session teardown); the AEAD pipeline is identical in both cases. The struct contains four fields.
 
-The `flags` field (1 byte) identifies the frame role and forms AAD byte 0. The `seq_num` field (2 bytes, `uint16_t`, little-endian) is the 16-bit packet sequence number and forms AAD bytes 1–2; it also serves as the input to the per-packet nonce derivation described in Section 5.1. Together, `flags` and `seq_num` constitute the 3-byte AAD region that is cryptographically bound to the ciphertext by the Poly1305 tag. The `payload` field (4 bytes, `uint16_t[2]`) holds the ChaCha20 stream-cipher encryption of the `{note_index, duration_ms}` pair, both encrypted atomically in a single `s_cipher.encrypt()` call of length `DATA_PAYLOAD_SIZE = 4`. The `mac` field (8 bytes, `uint8_t[TRUNCATED_MAC_SIZE]`) holds the first `TRUNCATED_MAC_SIZE = 8` bytes of the 16-byte Poly1305 output; the remaining 8 bytes are computed internally by `s_cipher.computeTag()` but not transmitted, yielding a per-frame MAC forgery probability of $ 2^{-64} $. The complete byte-level wire layout is illustrated in .ref {datapacket-wire-layout}.
+The `flags` field (1 byte) identifies the frame role and forms AAD byte 0. The `seq_num` field (2 bytes, `uint16_t`, little-endian) is the 16-bit packet sequence number and forms AAD bytes 1–2; it also serves as the input to the per-packet nonce derivation described in .ref {sec-5-1-session-lifecycle-handshake-syn-data-transfer-dat-teardown-fin}. Together, `flags` and `seq_num` constitute the 3-byte AAD region that is cryptographically bound to the ciphertext by the Poly1305 tag. The `payload` field (4 bytes, `uint16_t[2]`) holds the ChaCha20 stream-cipher encryption of the `{note_index, duration_ms}` pair, both encrypted atomically in a single `s_cipher.encrypt()` call of length `DATA_PAYLOAD_SIZE = 4`. The `mac` field (8 bytes, `uint8_t[TRUNCATED_MAC_SIZE]`) holds the first `TRUNCATED_MAC_SIZE = 8` bytes of the 16-byte Poly1305 output; the remaining 8 bytes are computed internally by `s_cipher.computeTag()` but not transmitted, yielding a per-frame MAC forgery probability of $ 2^{-64} $. The complete byte-level wire layout is illustrated in .ref {datapacket-wire-layout}.
 
 .mermaid ref:{datapacket-wire-layout} caption:{On-wire byte layout of `DataPacket` in the C2P-ARQ frame format. The 3-byte AAD region (`flags` + `seq_num`) is authenticated by the Poly1305 tag but not encrypted, and the 4-byte payload is ChaCha20 ciphertext.}
     packet-beta
@@ -877,7 +877,7 @@ The `flags` field (1 byte) identifies the frame role and forms AAD byte 0. The `
 
 For `FLAG_FIN` frames, `payload` holds the ChaCha20 encryption of the zero plaintext `{0, 0}` — two `uint16_t` values equal to zero. On the receiver, `processFinPacket()` decrypts the four ciphertext bytes into a local `discardBuf[DATA_PAYLOAD_SIZE]` array; the decrypted values are discarded, but the `s_cipher.decrypt()` call is architecturally mandatory because the Poly1305 accumulator ingests ciphertext bytes as a side effect of decryption. Omitting this call before `s_cipher.computeTag()` leaves the accumulator in an incorrect intermediate state and produces a false MAC mismatch for a cryptographically valid FIN frame — a `discardBuf` pattern that any future port or extension of the receiver firmware must replicate exactly.
 
-## Acknowledgement Mechanism and Runaway Retry Prevention
+## Acknowledgement Mechanism and Runaway Retry Prevention {#sec-5-3-acknowledgement-mechanism-and-runaway-retry-prevention}
 
 ### The ARQ Feedback Loop
 
@@ -915,7 +915,7 @@ with `ackWaitStart` being the `millis()` snapshot taken immediately after `formA
 
 Both the NACK path and the timeout path increment $ R $, but they differ in one defensive detail. On the NACK path a `delay(10)` call is inserted before retransmission. This brief pause is a targeted defensive invariant: a NACK implies the receiver's parser has just emitted a response byte on the feedback channel, which may be followed microseconds later by residual noise pulses still propagating through the UART line. The 10 ms drain window ensures that any such trailing bytes settle before the retransmitted packet arrives, preventing a stale byte from being misread as the ACK for the retransmission. On the timeout path no drain pause is inserted — no feedback byte was received, so the feedback FIFO is already empty and retransmission proceeds immediately, preserving as much of the 50 ms window as possible for the next response.
 
-### Runaway Retry Prevention and the Self-Healing Suspension
+### Runaway Retry Prevention and the Self-Healing Suspension {#sec-5-3-3-runaway-retry-prevention-and-the-self-healing-suspension}
 
 Without a hard upper bound on $ R $, a sustained jamming event would trap the transmitter in `WAITING_ACK` indefinitely: every retransmission would be corrupted, every ACK would be lost, and neither endpoint could exit its current state through any channel event reachable under continuous interference. This constitutes a protocol-layer deadlock from which no graceful recovery is possible without explicit out-of-band support. C2P-ARQ eliminates this deadlock by enforcing the following precondition before every retransmission:
 
@@ -970,19 +970,19 @@ Were the receiver to release its nonce buffer prematurely, the first `DataPacket
         H --> A
         I --> J([RECONNECTING])
 
-# Security Model & Cryptographic Core
+# Security Model & Cryptographic Core {#sec-6-security-model-cryptographic-core}
 
 The security of C2P-ARQ is analysed under the standard Dolev-Yao network adversary model (Dolev and Yao, 1983): the adversary occupies the communication channel between Node A and Node B as a complete man-in-the-middle and is granted unlimited capabilities over the forward data channel. Specifically, the adversary may observe every transmitted frame in its entirety, replay any previously captured frame at any future time, delay or reorder frames arbitrarily, drop any frame silently, and inject frames of any content at any byte position. These capabilities precisely model the threat surface presented by the SimulIDE XOR noise injector — a hardware switch that subjects every bit of the forward data channel to arbitrary bit-flip under operator control; the Dolev-Yao model is strictly stronger, as the adversary may craft targeted bit patterns rather than only XOR with a fixed waveform, making the SimulIDE experiment a conservative evaluation of a protocol designed to a higher threat standard.
 
 Two bounding assumptions define the cryptographic trust boundary. First, standard-model cryptographic idealisation: ChaCha20 is modelled as a pseudorandom permutation computationally indistinguishable from a uniform random permutation; Poly1305 is modelled as a computationally secure one-time MAC; no polynomial-time adversary can break either primitive under the standard PRF/MAC assumptions. Second, physical memory isolation: the adversary cannot read SRAM contents directly from either node — `MASTER_PSK` and `s_sessionNonce` reside in firmware-controlled memory, are never streamed to any output channel, and are not exposed through any communication interface.
 
-Under these assumptions the session-layer security of every C2P-ARQ session reduces to the secrecy of the single 256-bit `MASTER_PSK` compiled into both firmware images. The PSK is never transmitted, never printed to `Serial` or the Aip31068 LCD, and never derived from any observable parameter. It is the unique shared secret from which all per-session and per-packet cryptographic authority flows: an adversary without `MASTER_PSK` faces computationally infeasible forgery, decryption, and session-hijacking attacks against any frame produced by the AEAD pipeline. The three sections that follow formally establish the properties C2P-ARQ provides within this model: per-packet AEAD authentication (Section 6.1), nonce injectivity and sequence-number binding (Section 6.2), and forward-secrecy nonce erasure (Section 6.3).
+Under these assumptions the session-layer security of every C2P-ARQ session reduces to the secrecy of the single 256-bit `MASTER_PSK` compiled into both firmware images. The PSK is never transmitted, never printed to `Serial` or the Aip31068 LCD, and never derived from any observable parameter. It is the unique shared secret from which all per-session and per-packet cryptographic authority flows: an adversary without `MASTER_PSK` faces computationally infeasible forgery, decryption, and session-hijacking attacks against any frame produced by the AEAD pipeline. The three sections that follow formally establish the properties C2P-ARQ provides within this model: per-packet AEAD authentication (.ref {sec-6-1-authenticated-encryption-with-associated-data-chacha20-poly1305}), nonce injectivity and sequence-number binding (.ref {sec-6-2-16-bit-sequence-number-and-nonce-management}), and forward-secrecy nonce erasure (.ref {sec-6-3-key-zeroization-and-secure-memory-management}).
 
-## Authenticated Encryption with Associated Data (ChaCha20-Poly1305)
+## Authenticated Encryption with Associated Data (ChaCha20-Poly1305) {#sec-6-1-authenticated-encryption-with-associated-data-chacha20-poly1305}
 
 ### Why Integrity Dominates Confidentiality for Command Channels
 
-An intuitive but incomplete design for an embedded command channel applies a stream cipher to the payload field alone, providing confidentiality without integrity. This construction is fundamentally insufficient against the active adversary: stream-cipher ciphertext is additively malleable. If the adversary flips bit $ k $ of the 4-byte ciphertext block in `DataPacket.payload`, bit $ k $ of the corresponding decrypted byte flips identically after decryption, regardless of the key. In the C2P-ARQ payload, `note_index` occupies bytes 0–1 and `duration_ms` occupies bytes 2–3 (both `uint16_t`, little-endian). A single ciphertext bit-flip in byte 0 always yields a structurally valid but different `note_index` after decryption — the receiver has no mechanism to detect the substitution. An adversary who observes one plaintext session recovers the complete payload field layout and can thereafter synthesise arbitrary command substitutions over the encrypted channel without knowledge of `MASTER_PSK`. This is the bit-flip injection variant of the plaintext-injection attack identified in Section 1.1.
+An intuitive but incomplete design for an embedded command channel applies a stream cipher to the payload field alone, providing confidentiality without integrity. This construction is fundamentally insufficient against the active adversary: stream-cipher ciphertext is additively malleable. If the adversary flips bit $ k $ of the 4-byte ciphertext block in `DataPacket.payload`, bit $ k $ of the corresponding decrypted byte flips identically after decryption, regardless of the key. In the C2P-ARQ payload, `note_index` occupies bytes 0–1 and `duration_ms` occupies bytes 2–3 (both `uint16_t`, little-endian). A single ciphertext bit-flip in byte 0 always yields a structurally valid but different `note_index` after decryption — the receiver has no mechanism to detect the substitution. An adversary who observes one plaintext session recovers the complete payload field layout and can thereafter synthesise arbitrary command substitutions over the encrypted channel without knowledge of `MASTER_PSK`. This is the bit-flip injection variant of the plaintext-injection attack identified in .ref {sec-1-1-vulnerability-landscape-of-cots-rf-modules}.
 
 AEAD eliminates this attack class at the MAC gate. The Poly1305 tag $ \tau $ is a commitment to the exact byte sequence of the authenticated frame: any single-bit modification of the ciphertext or the plaintext header produces — with probability $ 1 - 2^{-64} $ — a different expected tag on the receiver, causing the constant-time `memcmp` check to fail. The security invariant enforced by `authenticateAndPlay()` is absolute: `startNote()` executes if and only if `memcmp` returns zero. No field of a MAC-failed packet influences the receiver's observable state, and no partial execution of the note-play path occurs on forgery attempt. Integrity is therefore not additive to confidentiality in C2P-ARQ — it is structurally prior: without the MAC gate, the adversary can inject commands via ciphertext malleability regardless of whether the payload is encrypted.
 
@@ -1101,7 +1101,7 @@ $$$
 
 roughly 8 billion years at the maximum channel rate.
 
-## 16-bit Sequence Number and Nonce Management
+## 16-bit Sequence Number and Nonce Management {#sec-6-2-16-bit-sequence-number-and-nonce-management}
 
 ### The Nonce-Reuse Hazard
 
@@ -1217,9 +1217,9 @@ $$$
 
 ### XOR versus Modular Addition
 
-The derivation employs bitwise XOR rather than modular addition to perturb bytes 10 and 11. Both operations are injective over the 8-bit unsigned range and would therefore produce a correct per-packet IV. The choice of XOR is motivated by AVR architecture constraints: on the ATmega328P, `EOR Rd, Rr` is a single one-cycle instruction with no carry output, and its result in byte 10 is statistically independent of its result in byte 11. Modular addition in C++ on an 8-bit AVR involves implicit integer promotion to `int`, requiring explicit masking back to 8 bits to prevent unsigned-wraparound artifacts, while XOR is carry-free by definition and requires no masking. The derivation is architecturally consistent with the rotate-XOR sponge employed in the entropy blender described in Section 4.2, maintaining uniform use of the same primitive across all bit-manipulation operations in the C2P-ARQ stack.
+The derivation employs bitwise XOR rather than modular addition to perturb bytes 10 and 11. Both operations are injective over the 8-bit unsigned range and would therefore produce a correct per-packet IV. The choice of XOR is motivated by AVR architecture constraints: on the ATmega328P, `EOR Rd, Rr` is a single one-cycle instruction with no carry output, and its result in byte 10 is statistically independent of its result in byte 11. Modular addition in C++ on an 8-bit AVR involves implicit integer promotion to `int`, requiring explicit masking back to 8 bits to prevent unsigned-wraparound artifacts, while XOR is carry-free by definition and requires no masking. The derivation is architecturally consistent with the rotate-XOR sponge employed in the entropy blender described in .ref {sec-4-2-cryptographic-entropy-blender}, maintaining uniform use of the same primitive across all bit-manipulation operations in the C2P-ARQ stack.
 
-## Key Zeroization and Secure Memory Management
+## Key Zeroization and Secure Memory Management {#sec-6-3-key-zeroization-and-secure-memory-management}
 
 ### Data Remanence on ATmega328P SRAM
 
@@ -1229,7 +1229,7 @@ $$$
 S \in \{0,1\}^{96}
 $$$
 
-resident in SRAM, any of these paths yields the complete per-packet IV derivation capability described in Section 6.2: from $ S $ and the publicly observable sequence numbers $ i $, all $ IV_i $ are reconstructible, and all session ciphertexts become decryptable against the static `MASTER_PSK` compiled into Flash.
+resident in SRAM, any of these paths yields the complete per-packet IV derivation capability described in .ref {sec-6-2-16-bit-sequence-number-and-nonce-management}: from $ S $ and the publicly observable sequence numbers $ i $, all $ IV_i $ are reconstructible, and all session ciphertexts become decryptable against the static `MASTER_PSK` compiled into Flash.
 
 ### Forward Secrecy Through Deterministic Zeroization
 
@@ -1245,7 +1245,7 @@ $$$
 IV_0, IV_1, \ldots, IV_{n-1}
 $$$
 
-derived from $ S $ per the mapping of Section 6.2. Setting
+derived from $ S $ per the mapping of .ref {sec-6-2-16-bit-sequence-number-and-nonce-management}. Setting
 
 $$$
 S = \mathbf{0}^{96}
@@ -1387,9 +1387,9 @@ bits of physical entropy prior to ChaCha20 conditioning — would remain accessi
 
 The C standard permits a compiler to elide `memset()` calls that target buffers not subsequently accessed — the "dead store" elimination optimisation. Under `avr-gcc` at `-Os` (the default Arduino optimisation level), this elimination does not occur in practice for the SRAM-addressed writes examined here; however, production deployments requiring a formal machine-level guarantee should replace the plain `memset()` calls with `memset_s()` (C11 Annex K) or an explicit `volatile uint8_t *` cast, both of which are defined to prevent dead-store elimination across all conforming optimisation levels.
 
-# Fault Tolerance and Self-Healing Mechanisms
+# Fault Tolerance and Self-Healing Mechanisms {#sec-7-fault-tolerance-and-self-healing-mechanisms}
 
-The cryptographic mechanisms analysed in Section 6 — AEAD authentication, per-packet nonce uniqueness, and deterministic key erasure — constitute a defence against an adversary whose goal is to *manipulate* the payload: forge notes, replay old frames, or reconstruct plaintext from captured ciphertext. Against such an adversary, C2P-ARQ provides strong security guarantees bounded by the computational hardness of compromising ChaCha20-Poly1305.
+The cryptographic mechanisms analysed in .ref {sec-6-security-model-cryptographic-core} — AEAD authentication, per-packet nonce uniqueness, and deterministic key erasure — constitute a defence against an adversary whose goal is to *manipulate* the payload: forge notes, replay old frames, or reconstruct plaintext from captured ciphertext. Against such an adversary, C2P-ARQ provides strong security guarantees bounded by the computational hardness of compromising ChaCha20-Poly1305.
 
 A physically active attacker, however, need not engage with the cryptographic layer at all. By injecting sufficient noise to corrupt every transmitted bit, the attacker transforms the channel into one on which no valid frame can reach the receiver. The Poly1305 MAC correctly rejects every corrupted frame; yet this correct behaviour does nothing to advance the melody. Each rejected frame consumes one unit of the retry budget. When `MAX_RETRIES = 50` retries at `ACK_TIMEOUT_MS = 50 ms` each are exhausted — a sustained jamming interval of:
 
@@ -1401,7 +1401,7 @@ $$$
 
 This dichotomy motivates the fault-tolerance mechanisms described in this section. Rather than treating link interruption as a fatal error requiring operator intervention, C2P-ARQ defines an autonomous recovery automaton that re-establishes the session and resumes transmission from the exact note at which it was disrupted. This property — termed Self-Healing — is the defining differentiator of SH2SC-EDT from conventional embedded communication implementations.
 
-## The RECONNECTING State and Payload State Preservation
+## The RECONNECTING State and Payload State Preservation {#sec-7-1-the-reconnecting-state-and-payload-state-preservation}
 
 ### The Naive IoT Architecture
 
@@ -1473,11 +1473,11 @@ When the condition holds, the FSM transitions to `TxState::SENDING_HELLO`, which
 
 An operator may override the Self-Healing resumption by pressing the TX button while in `RECONNECTING`: this explicitly resets `melodyIndex = 0` and forces a melody restart from $ P_0 $.
 
-## Smart Dynamic Watchdog: Payload-Aware Timeout Adaptation
+## Smart Dynamic Watchdog: Payload-Aware Timeout Adaptation {#sec-7-2-smart-dynamic-watchdog-payload-aware-timeout-adaptation}
 
 ### The Receiver Deadlock Problem
 
-The FLAG_FIN teardown path described in Section 5 achieves clean session closure only under the assumption that the transmitter remains capable of sending a final authenticated packet. In practice this assumption is violated by two failure modes: a hard power-cut at the transmitter, and the scenario analysed in Section 7.1 where the transmitter exhausts `MAX_RETRIES` and enters `RECONNECTING` without issuing a FIN. In both cases the receiver holds an open session indefinitely: `s_sessionActive` remains `true`, `s_sessionNonce` occupies 12 bytes of SRAM, and the parser will accept a new SYN only after the session is explicitly released. Without an active release mechanism, the next session can never be established — the system deadlocks.
+The FLAG_FIN teardown path described in .ref {sec-5-c2p-arq-protocol-specification} achieves clean session closure only under the assumption that the transmitter remains capable of sending a final authenticated packet. In practice this assumption is violated by two failure modes: a hard power-cut at the transmitter, and the scenario analysed in .ref {sec-7-1-the-reconnecting-state-and-payload-state-preservation} where the transmitter exhausts `MAX_RETRIES` and enters `RECONNECTING` without issuing a FIN. In both cases the receiver holds an open session indefinitely: `s_sessionActive` remains `true`, `s_sessionNonce` occupies 12 bytes of SRAM, and the parser will accept a new SYN only after the session is explicitly released. Without an active release mechanism, the next session can never be established — the system deadlocks.
 
 A static session-release timeout does not resolve this deadlock cleanly. A short static value — smaller than the longest note duration in the melody — fires before the transmitter has had time to transmit the next packet, producing a spurious session reset during normal note playback. A long static value — chosen conservatively to exceed the longest possible note — forces the receiver to hold session RAM for the full static interval after the transmitter disappears, delaying reconnection by the full watchdog period unnecessarily. Neither choice can simultaneously avoid false positives on long notes and minimise reconnection delay after a genuine link failure.
 
@@ -1538,7 +1538,7 @@ The complete watchdog logic — from session arming through conditional erasure 
 
 A critical invariant must hold: the receiver's watchdog must never fire while the transmitter is still in the middle of a legitimate retry storm — that is, the receiver must not zero `s_sessionNonce` before the transmitter has finished its `MAX_RETRIES × ACK_TIMEOUT_MS` retry cycle and entered `TxState::RECONNECTING`. If this race condition could occur, the first `HelloPacket` of the reconnect handshake would be processed by a receiver that has already released its session nonce, which is the correct outcome. However, a `DataPacket` retransmission arriving at the receiver after `s_sessionNonce` has been zeroed would fail MAC verification and produce a NACK — escalating an already-degraded link into an unrecoverable desynchronization until the next SYN handshake completes.
 
-The protocol eliminates this race by construction. The worst-case TX retry storm duration is bounded at 2500 ms, as derived earlier in the "Runaway Retry Prevention and the Self-Healing Suspension" subsection in Section 5.3.
+The protocol eliminates this race by construction. The worst-case TX retry storm duration is bounded at 2500 ms, as derived earlier in .ref {sec-5-3-3-runaway-retry-prevention-and-the-self-healing-suspension}.
 
 The grace period satisfies:
 
@@ -1560,7 +1560,7 @@ $$$
 
 the receiver is guaranteed to hold its session nonce for at least $ T_{\text{grace}} = 3000\,\text{ms} $ beyond the last authenticated packet — longer than the transmitter can remain in any `WAITING_*` state before entering `RECONNECTING`. The source comment at `NETWORK_GRACE_PERIOD_MS` reflects this precisely: *"Absorbs the worst-case TX retry storm: MAX\_RETRIES × ACK\_TIMEOUT\_MS = 50 × 50 ms = 2500 ms. Value 3000 ms provides 500 ms margin above that maximum."* The two nodes thus converge to their respective idle states — `TxState::RECONNECTING` and the byte-parser reset to `WAIT_AA` — in the correct temporal order, making the subsequent SYN handshake unconditionally successful.
 
-## Stale Buffer Drain and Desynchronization Recovery
+## Stale Buffer Drain and Desynchronization Recovery {#sec-7-3-stale-buffer-drain-and-desynchronization-recovery}
 
 ### The Stale-Byte Poisoning Problem
 
@@ -1648,7 +1648,7 @@ where $ b_i $ and $ b_{i+1} $ are two consecutive independently uniformly distri
 
 After a false preamble match, the parser advances to `READ_TYPE`. A false `READ_TYPE` byte that does not match any recognised flag bit (`FLAG_SYN = 0x01`, `FLAG_DAT = 0x02`, `FLAG_FIN = 0x04`) immediately resets the parser to `WAIT_AA`: the source code at the unrecognised-flag branch reads *"No recognised flag bit — channel noise, restart preamble scan."* For a false body to survive to the dispatch stage, the false `READ_TYPE` byte must have at least one of bits 0, 1, or 2 set — a probability of $ 7/256 $ — and the accumulated body bytes must produce a Poly1305 MAC that passes `memcmp` against the truncated 8-byte tag, the probability of which is $ 2^{-64} $ under any computationally bounded adversary. The compound false-positive probability is therefore negligible under all realistic operating conditions.
 
-# Adversary Model and Jamming Simulation
+# Adversary Model and Jamming Simulation {#sec-8-adversary-model-and-jamming-simulation}
 
 Sections 6 and 7 establish two necessary pillars of correctness: cryptographic security under the AEAD construction and deterministic recovery logic under bounded retransmission. These results guarantee confidentiality, integrity, and protocol-level state repair properties under the C2P-ARQ design assumptions. However, they are not by themselves sufficient to prove operational robustness in the presence of sustained physical-layer disruption.
 
@@ -1660,13 +1660,13 @@ In the SH2SC-EDT testbed, the Attacker is not a programmable microcontroller and
 
 Its passive capabilities are provided by SimulIDE instrumentation. Through the oscilloscope and logic analyzer, the adversary can observe the bit-level waveform, measure temporal characteristics of transmissions, and infer traffic morphology (burst structure, idle gaps, and retransmission cadence). Because payload-bearing frames are protected by ChaCha20-Poly1305, such observation exposes timing and channel-occupancy metadata only, not authenticated plaintext semantics.
 
-Its active capability is physical channel interference: the adversary can seize the transmission line and inject disruptive signal activity that corrupts in-flight symbols and invalidates received frames. This model captures hardware-level jamming pressure on the UART link and provides the adversarial basis for evaluating protocol liveness and fault tolerance under prolonged disruption. The internal construction of the jamming instrument is intentionally deferred to Section 8.2.
+Its active capability is physical channel interference: the adversary can seize the transmission line and inject disruptive signal activity that corrupts in-flight symbols and invalidates received frames. This model captures hardware-level jamming pressure on the UART link and provides the adversarial basis for evaluating protocol liveness and fault tolerance under prolonged disruption. The internal construction of the jamming instrument is intentionally deferred to .ref {sec-8-2-digital-noise-generator-architecture-and-xor-injection}.
 
 The Attacker sub-circuit used in the SH2SC-EDT testbed is shown in .ref {attacker-sub-circuit-overview-in-simulide}.
 
 ![The Attacker sub-circuit overview in SimulIDE](img/fig_04_attacker_node_overview.png "The Attacker sub-circuit overview in SimulIDE, equipped with an oscilloscope and logic analyzer for passive monitoring, and a digital noise generator for active channel disruption.") {#attacker-sub-circuit-overview-in-simulide}
 
-## Digital Noise Generator Architecture and XOR Injection
+## Digital Noise Generator Architecture and XOR Injection {#sec-8-2-digital-noise-generator-architecture-and-xor-injection}
 
 The Digital Noise Generator is implemented in SimulIDE as a compact hardware logic chain whose sole purpose is to superimpose controlled binary interference onto the forward UART channel. Its topology consists of a 5 V manual enable path, a 2000 Hz pulse source, an AND gate that either permits or suppresses the disturbance stream, and an XOR gate that injects the resulting jamming waveform into the clean serial output of Node A before the signal reaches Node B.
 
@@ -1738,7 +1738,7 @@ The internal gate-level architecture of the Digital Noise Generator is shown in 
 
 ![Internal architecture of the Digital Noise Generator in SimulIDE](img/fig_06_digital_noise_injector.png "Internal architecture of the Digital Noise Generator in SimulIDE. A 2000 Hz clock signal is gated by a manual switch via an AND gate, and injected into the UART data line via an XOR gate to induce deterministic bit-flips.") {#digital-noise-generator-architecture-in-simulide}
 
-## Simulation Results: Resilience Under Prolonged Jamming
+## Simulation Results: Resilience Under Prolonged Jamming {#sec-8-3-simulation-results-resilience-under-prolonged-jamming}
 
 This subsection reports the empirical behaviour of SH2SC-EDT under sustained physical-layer interference, using a chronological scenario method rather than isolated snapshots. The timeline is traced from cold boot, through handshake attempts and protocol desynchronization under active jamming, to eventual recovery via the C2P-ARQ self-healing path. The objective is to validate liveness and fault-tolerance properties in an adversarial environment where cryptographic correctness alone is insufficient as evidence of operational continuity.
 
@@ -2104,7 +2104,7 @@ This paper has presented the end-to-end design, implementation, and empirical va
 
 The reported results establish that SH2SC-EDT and its C2P-ARQ transport engine achieve a coherent synthesis of cryptographic assurance and deterministic embedded execution. Across the implemented protocol lifecycle, ChaCha20-Poly1305 AEAD was successfully integrated into a strictly non-blocking Stop-and-Wait ARQ finite-state architecture, thereby providing confidentiality for payload fields and strict frame authentication at the data-link layer through authenticated binding of control metadata and ciphertext. The empirical traces further confirm that protocol progression remains governed by bounded `millis()`-based transitions rather than blocking control paths, preserving timing determinism under AVR-class resource constraints.
 
-The study also verifies the central Self-Healing property under sustained physical-layer degradation. Section 8 demonstrates that, during prolonged jamming, the system autonomously detects unrecoverable channel conditions through bounded retry and timeout logic, performs safe cryptographic session teardown with nonce erasure, and enters controlled reconnection behavior without operator intervention. Once channel integrity is restored, session re-establishment proceeds securely via freshly generated TRNG-seeded session material, validating that recovery is both autonomous and cryptographically sound.
+The study also verifies the central Self-Healing property under sustained physical-layer degradation. .ref {sec-8-adversary-model-and-jamming-simulation} demonstrates that, during prolonged jamming, the system autonomously detects unrecoverable channel conditions through bounded retry and timeout logic, performs safe cryptographic session teardown with nonce erasure, and enters controlled reconnection behavior without operator intervention. Once channel integrity is restored, session re-establishment proceeds securely via freshly generated TRNG-seeded session material, validating that recovery is both autonomous and cryptographically sound.
 
 Finally, the experiments confirm that SH2SC-EDT decouples session continuity from application progress, which is the key condition for fault-tolerant delivery without semantic loss. While transport context is intentionally reinitialized after disruption, application state is preserved, enabling exact Auto-Resume from the interrupted payload position and thereby demonstrating zero data loss across outages. In addition, the full-sized authenticated termination frame preserves on-wire structural indistinguishability from regular encrypted traffic, mitigating trivial traffic-analysis inference of session closure from packet-length signatures.
 
