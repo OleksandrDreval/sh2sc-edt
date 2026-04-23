@@ -770,7 +770,7 @@ $$$
 IV_i \neq IV_{i'}
 $$$
 
-All 65 536 sequence-number values therefore produce distinct per-packet nonces within a single session.
+All 65,536 sequence-number values therefore produce distinct per-packet nonces within a single session.
 
 #### AEAD Pipeline
 
